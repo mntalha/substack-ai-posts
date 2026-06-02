@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RNN vs Transformer — Parallelism</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+  .container { max-width: 1000px; width: 100%; }
+  h1 { text-align: center; font-size: 24px; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin-bottom: 32px; }
+  .comparison { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; }
+  .side { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 24px; flex: 1; min-width: 400px; max-width: 470px; }
+  .side h2 { font-size: 18px; margin-bottom: 4px; }
+  .side .verdict { font-size: 12px; margin-bottom: 16px; }
+  .rnn-title { color: #cf222e; }
+  .tfm-title { color: #1a7f37; }
+  .rnn-verdict { color: #cf222e80; }
+  .tfm-verdict { color: #1a7f3780; }
+
+  .timeline { position: relative; margin: 16px 0; }
+  .time-label { font-size: 11px; color: #656d76; font-family: monospace; margin-bottom: 4px; }
+
+  .rnn-grid { display: flex; flex-direction: column; gap: 4px; }
+  .rnn-row { display: flex; align-items: center; gap: 4px; }
+  .rnn-step-label { width: 50px; font-size: 10px; color: #656d76; font-family: monospace; text-align: right; padding-right: 8px; }
+  .rnn-cell { width: 60px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+  .rnn-active { background: #cf222e; color: #fff; }
+  .rnn-done { background: #f0f2f5; border: 1px solid #d0d7de; color: #656d76; }
+  .rnn-idle { background: #ffffff; border: 1px dashed #d0d7de; color: #d0d7de; }
+  .rnn-arrow { color: #656d76; font-size: 16px; }
+
+  .tfm-grid { display: grid; gap: 2px; margin-top: 8px; }
+  .tfm-cell { height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; }
+  .tfm-active { background: #238636; color: #fff; }
+  .tfm-result { background: #ddf4ff; border: 1px solid #0969da40; color: #0969da; }
+
+  .gpu-bar { margin-top: 16px; }
+  .gpu-label { font-size: 11px; color: #656d76; margin-bottom: 4px; }
+  .gpu-track { height: 20px; background: #f0f2f5; border-radius: 4px; overflow: hidden; display: flex; }
+  .gpu-used { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #fff; }
+  .gpu-idle { height: 100%; background: #ffffff; }
+  .gpu-pct { font-size: 10px; margin-top: 2px; }
+
+  .bottom-table { margin-top: 32px; width: 100%; }
+  .bottom-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .bottom-table th { background: #f6f8fa; border: 1px solid #d0d7de; padding: 10px 14px; text-align: left; color: #656d76; }
+  .bottom-table td { border: 1px solid #d0d7de; padding: 10px 14px; }
+  .bottom-table .win { color: #1a7f37; font-weight: 700; }
+  .bottom-table .lose { color: #cf222e; }
+
+  .insight { background: #f6f8fa; border-left: 3px solid #388bfd; border-radius: 0 8px 8px 0; padding: 16px; margin-top: 24px; font-size: 13px; line-height: 1.6; }
+  .insight strong { color: #0969da; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Why Transformers Train in Parallel</h1>
+  <p class="sub">Same 4 tokens. Same task. Completely different hardware utilization.</p>
+
+  <div class="comparison">
+    <!-- RNN SIDE -->
+    <div class="side">
+      <h2 class="rnn-title">RNN — Sequential</h2>
+      <p class="verdict rnn-verdict">Each step waits for the previous one. GPU mostly idle.</p>
+
+      <div class="timeline">
+        <div class="time-label">Time step →</div>
+        <div class="rnn-grid">
+          <div class="rnn-row">
+            <div class="rnn-step-label">Step 1:</div>
+            <div class="rnn-cell rnn-active">The</div>
+            <div class="rnn-cell rnn-idle">cat</div>
+            <div class="rnn-cell rnn-idle">sat</div>
+            <div class="rnn-cell rnn-idle">down</div>
+          </div>
+          <div style="text-align:center; color:#656d76; font-size:12px; padding:2px 0 2px 54px;">↓ h₁ passes forward</div>
+          <div class="rnn-row">
+            <div class="rnn-step-label">Step 2:</div>
+            <div class="rnn-cell rnn-done">The</div>
+            <div class="rnn-cell rnn-active">cat</div>
+            <div class="rnn-cell rnn-idle">sat</div>
+            <div class="rnn-cell rnn-idle">down</div>
+          </div>
+          <div style="text-align:center; color:#656d76; font-size:12px; padding:2px 0 2px 54px;">↓ h₂ depends on h₁</div>
+          <div class="rnn-row">
+            <div class="rnn-step-label">Step 3:</div>
+            <div class="rnn-cell rnn-done">The</div>
+            <div class="rnn-cell rnn-done">cat</div>
+            <div class="rnn-cell rnn-active">sat</div>
+            <div class="rnn-cell rnn-idle">down</div>
+          </div>
+          <div style="text-align:center; color:#656d76; font-size:12px; padding:2px 0 2px 54px;">↓ h₃ depends on h₂</div>
+          <div class="rnn-row">
+            <div class="rnn-step-label">Step 4:</div>
+            <div class="rnn-cell rnn-done">The</div>
+            <div class="rnn-cell rnn-done">cat</div>
+            <div class="rnn-cell rnn-done">sat</div>
+            <div class="rnn-cell rnn-active">down</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gpu-bar">
+        <div class="gpu-label">GPU Utilization (per step)</div>
+        <div class="gpu-track">
+          <div class="gpu-used" style="width:6.25%; background:#cf222e;">1</div>
+          <div class="gpu-idle" style="width:93.75%;"></div>
+        </div>
+        <div class="gpu-pct" style="color:#cf222e;">1/16 cores active = <strong>6.25%</strong> utilization</div>
+      </div>
+
+      <p style="font-size:11px; color:#656d76; margin-top:12px; line-height:1.5;">
+        <strong>4 sequential operations.</strong> Each hidden state h_t = f(h_{t-1}, x_t). 
+        Cannot start computing h₂ until h₁ is finished. With S = 100,000 tokens, 
+        that's 100,000 serial steps.
+      </p>
+    </div>
+
+    <!-- TRANSFORMER SIDE -->
+    <div class="side">
+      <h2 class="tfm-title">Transformer — Parallel</h2>
+      <p class="verdict tfm-verdict">All tokens processed simultaneously. GPU fully utilized.</p>
+
+      <div class="timeline">
+        <div class="time-label">Single operation →</div>
+
+        <p style="font-size:11px; color:#656d76; margin:8px 0 4px;">Step 1: All tokens embedded at once</p>
+        <div style="display:flex; gap:4px;">
+          <div class="tfm-cell tfm-active" style="flex:1;">The</div>
+          <div class="tfm-cell tfm-active" style="flex:1;">cat</div>
+          <div class="tfm-cell tfm-active" style="flex:1;">sat</div>
+          <div class="tfm-cell tfm-active" style="flex:1;">down</div>
+        </div>
+
+        <p style="font-size:11px; color:#656d76; margin:12px 0 4px;">Step 2: QK<sup>T</sup> — all pairwise scores in ONE matmul</p>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:2px;">
+          <div class="tfm-cell tfm-active">The→The</div>
+          <div class="tfm-cell tfm-active">The→cat</div>
+          <div class="tfm-cell tfm-active">The→sat</div>
+          <div class="tfm-cell tfm-active">The→dwn</div>
+          <div class="tfm-cell tfm-active">cat→The</div>
+          <div class="tfm-cell tfm-active">cat→cat</div>
+          <div class="tfm-cell tfm-active">cat→sat</div>
+          <div class="tfm-cell tfm-active">cat→dwn</div>
+          <div class="tfm-cell tfm-active">sat→The</div>
+          <div class="tfm-cell tfm-active">sat→cat</div>
+          <div class="tfm-cell tfm-active">sat→sat</div>
+          <div class="tfm-cell tfm-active">sat→dwn</div>
+          <div class="tfm-cell tfm-active">dwn→The</div>
+          <div class="tfm-cell tfm-active">dwn→cat</div>
+          <div class="tfm-cell tfm-active">dwn→sat</div>
+          <div class="tfm-cell tfm-active">dwn→dwn</div>
+        </div>
+
+        <p style="font-size:11px; color:#656d76; margin:12px 0 4px;">Step 3: softmax(scores) × V → all outputs at once</p>
+        <div style="display:flex; gap:4px;">
+          <div class="tfm-cell tfm-result" style="flex:1;">out₁</div>
+          <div class="tfm-cell tfm-result" style="flex:1;">out₂</div>
+          <div class="tfm-cell tfm-result" style="flex:1;">out₃</div>
+          <div class="tfm-cell tfm-result" style="flex:1;">out₄</div>
+        </div>
+      </div>
+
+      <div class="gpu-bar">
+        <div class="gpu-label">GPU Utilization (QK<sup>T</sup> step)</div>
+        <div class="gpu-track">
+          <div class="gpu-used" style="width:100%; background:#238636;">16/16</div>
+        </div>
+        <div class="gpu-pct" style="color:#1a7f37;">16/16 cores active = <strong>100%</strong> utilization</div>
+      </div>
+
+      <p style="font-size:11px; color:#656d76; margin-top:12px; line-height:1.5;">
+        <strong>1 parallel operation.</strong> QK<sup>T</sup> is a matrix multiply — GPU computes all 16 
+        output cells simultaneously. With S = 100,000 tokens, it's still one matmul 
+        (though memory is S² = 10 billion entries per head).
+      </p>
+    </div>
+  </div>
+
+  <!-- SCALING TABLE -->
+  <div class="bottom-table">
+    <table>
+      <tr>
+        <th>Sequence Length (S)</th>
+        <th>RNN Sequential Steps</th>
+        <th>Transformer Sequential Steps</th>
+        <th>Attention Memory (per head)</th>
+      </tr>
+      <tr>
+        <td>4 (toy example)</td>
+        <td class="lose">4</td>
+        <td class="win">1</td>
+        <td>16 entries</td>
+      </tr>
+      <tr>
+        <td>512 (BERT)</td>
+        <td class="lose">512</td>
+        <td class="win">1</td>
+        <td>262K entries</td>
+      </tr>
+      <tr>
+        <td>2,048 (GPT-3)</td>
+        <td class="lose">2,048</td>
+        <td class="win">1</td>
+        <td>4.2M entries</td>
+      </tr>
+      <tr>
+        <td>128,000 (GPT-4)</td>
+        <td class="lose">128,000</td>
+        <td class="win">1</td>
+        <td>16.4B entries</td>
+      </tr>
+      <tr>
+        <td>200,000 (Claude)</td>
+        <td class="lose">200,000</td>
+        <td class="win">1</td>
+        <td>40B entries</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="insight">
+    <strong>The core insight:</strong> The parallelism isn't magic — it's that the Transformer 
+    reformulates everything as matrix multiplications. GPUs are literally designed to compute 
+    all output cells of a matrix multiply simultaneously. An RNN forces serial dependency 
+    (h_t needs h_{t-1}), which means most GPU cores sit idle. The Transformer has no such 
+    dependency — every token's attention computation is independent and can happen at once.
+    <br><br>
+    <strong>The tradeoff:</strong> Memory scales as O(S²) for attention. At S = 200,000, 
+    that's 40 billion entries per head × 8 heads = 320B entries. This is why 
+    <strong>FlashAttention</strong> (Dao et al., 2022) was needed to make long-context models practical.
+  </div>
+</div>
+</body>
+</html>

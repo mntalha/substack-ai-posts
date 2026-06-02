@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Transformer Layer Flow — "The cat sat down"</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 36px 20px; }
+  .page { max-width: 1160px; width: 100%; }
+
+  h1 { text-align: center; font-size: 24px; margin-bottom: 2px; }
+  .sub { text-align: center; font-size: 12px; color: #656d76; margin-bottom: 24px; }
+  .config { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
+  .chip { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 14px; padding: 3px 10px; font-size: 10px; font-family: 'Cascadia Code', monospace; }
+  .chip b { color: #0969da; }
+
+  /* ---- DUAL COLUMN LAYOUT ---- */
+  .dual { display: flex; gap: 28px; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+
+  /* ---- COLUMN HEADERS ---- */
+  .col-header { text-align: center; padding: 10px; border-radius: 10px 10px 0 0; font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
+  .col-header-enc { background: linear-gradient(135deg, #ddf4ff, #f6f8fa); border: 2px solid #0969da40; color: #0969da; }
+  .col-header-dec { background: linear-gradient(135deg, #ffebe9, #f6f8fa); border: 2px solid #cf222e40; color: #cf222e; }
+  .col-header small { display: block; font-size: 10px; font-weight: 400; color: #656d76; margin-top: 2px; }
+
+  /* ---- FLOW BLOCKS ---- */
+  .flow-col { border-radius: 0 0 10px 10px; padding: 0; }
+  .flow-enc { border: 2px solid #0969da40; border-top: none; }
+  .flow-dec { border: 2px solid #cf222e40; border-top: none; }
+
+  /* ---- INDIVIDUAL BLOCKS ---- */
+  .blk { margin: 0; position: relative; }
+  .blk-inner { padding: 10px 14px; }
+
+  /* colors */
+  .blk-embed  { background: #f6f8fa80; border-bottom: 1px solid #d0d7de; }
+  .blk-attn   { background: #ddf4ff60; border-bottom: 1px solid #d0d7de; }
+  .blk-addnorm{ background: #f6f8fa40; border-bottom: 1px solid #d0d7de; }
+  .blk-ffn    { background: #dafbe150; border-bottom: 1px solid #d0d7de; }
+  .blk-cross  { background: #fff8c550; border-bottom: 1px solid #d0d7de; }
+  .blk-out    { background: #271f3d50; border-bottom: 1px solid #d0d7de; }
+  .blk-masked { background: #ffebe950; border-bottom: 1px solid #d0d7de; }
+
+  .blk-label { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .blk-desc { font-size: 10px; color: #656d76; line-height: 1.5; }
+  .blk-desc b { color: #1f2328; }
+
+  /* shape badges */
+  .shape { display: inline-block; font-family: 'Cascadia Code', monospace; font-size: 10px; padding: 2px 8px; border-radius: 4px; margin: 2px 2px 2px 0; }
+  .shape-blue { background: #ddf4ff; color: #0969da; border: 1px solid #388bfd30; }
+  .shape-green { background: #dafbe1; color: #1a7f37; border: 1px solid #3fb95030; }
+  .shape-orange { background: #fff8c5; color: #9a6700; border: 1px solid #d2992230; }
+  .shape-red { background: #ffebe9; color: #cf222e; border: 1px solid #f8514930; }
+  .shape-purple { background: #271f3d; color: #8250df; border: 1px solid #8957e530; }
+
+  /* arrows between blocks */
+  .arrow-row { text-align: center; padding: 3px 0; position: relative; }
+  .arrow-row .arr { font-size: 16px; color: #d0d7de; }
+  .arrow-row .arr-shape { font-family: 'Cascadia Code', monospace; font-size: 9px; color: #656d76; margin-left: 6px; }
+
+  /* residual arrows */
+  .residual-tag { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 9px; color: #656d76; background: #ffffff; border: 1px solid #d0d7de; border-radius: 3px; padding: 1px 5px; }
+  .skip-arrow { position: absolute; right: -1px; top: 0; bottom: 0; width: 28px; }
+  .skip-line { position: absolute; right: 12px; border-right: 2px dashed #d0d7de; }
+
+  /* cross-attention bridge */
+  .bridge { display: flex; align-items: center; justify-content: center; margin: 0 -14px; padding: 6px 0; }
+  .bridge-line { flex: 1; height: 2px; background: repeating-linear-gradient(90deg, #d29922 0, #d29922 6px, transparent 6px, transparent 12px); }
+  .bridge-label { padding: 0 10px; font-size: 10px; color: #9a6700; font-weight: 700; white-space: nowrap; }
+
+  /* repeat badge */
+  .repeat-badge { text-align: center; padding: 8px; font-size: 12px; color: #388bfd; border: 2px dashed #388bfd30; border-radius: 8px; margin: 8px 14px; background: #ffffff; }
+  .repeat-badge-dec { color: #cf222e; border-color: #cf222e30; }
+
+  /* input/output labels */
+  .io-label { text-align: center; padding: 8px 14px; font-size: 11px; font-weight: 700; }
+  .io-enc { color: #0969da; }
+  .io-dec { color: #cf222e; }
+
+  /* legend */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 22px; padding: 12px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #656d76; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* summary table */
+  .summary { margin-top: 22px; }
+  .summary h2 { font-size: 15px; color: #0969da; margin-bottom: 10px; text-align: center; }
+  .stbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .stbl th { padding: 6px 10px; text-align: left; border-bottom: 2px solid #d0d7de; color: #656d76; font-weight: 600; }
+  .stbl td { padding: 5px 10px; border-bottom: 1px solid #d0d7de; }
+  .stbl .sec { color: #0969da; font-weight: 700; }
+  .stbl .sec-d { color: #cf222e; font-weight: 700; }
+  .mono { font-family: 'Cascadia Code', monospace; }
+  .dim { color: #656d76; }
+
+  .note-bottom { text-align: center; font-size: 10px; color: #656d76; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Transformer Layer Flow</h1>
+  <p class="sub">"The cat sat down" → "Die Katze setzte sich" — every arrow annotated with tensor shapes</p>
+
+  <div class="config">
+    <div class="chip"><b>B</b>=1</div>
+    <div class="chip"><b>S<sub>enc</sub></b>=4</div>
+    <div class="chip"><b>T<sub>dec</sub></b>=4</div>
+    <div class="chip"><b>d<sub>model</sub></b>=512</div>
+    <div class="chip"><b>h</b>=8</div>
+    <div class="chip"><b>d<sub>k</sub></b>=64</div>
+    <div class="chip"><b>d<sub>ff</sub></b>=2048</div>
+    <div class="chip"><b>V</b>=37000</div>
+  </div>
+
+  <!-- ====== DUAL COLUMN ====== -->
+  <div class="dual">
+
+    <!-- ===================== ENCODER COLUMN ===================== -->
+    <div class="col">
+      <div class="col-header col-header-enc">
+        ENCODER
+        <small>×6 identical layers</small>
+      </div>
+      <div class="flow-col flow-enc">
+
+        <!-- Input -->
+        <div class="io-label io-enc">
+          Input: "The cat sat down" &nbsp; <span class="shape shape-blue">(1, 4)</span> integer IDs
+        </div>
+
+        <!-- Embedding -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">lookup in W<sub>emb</sub> (37000×512)</span></div>
+        <div class="blk blk-embed">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#0969da;">Token Embedding × √512</div>
+            <div class="blk-desc">
+              Each ID → 512-dim vector, scaled by √512 ≈ 22.6<br>
+              <span class="shape shape-blue">(1, 4, 512)</span>
+              <span class="dim">4 tokens × 512 dims = 2,048 floats</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Positional Encoding -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">element-wise add</span></div>
+        <div class="blk blk-embed">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#1a7f37;">+ Positional Encoding</div>
+            <div class="blk-desc">
+              Fixed sinusoidal PE <span class="shape shape-green">(4, 512)</span> added to embeddings<br>
+              Output: <span class="shape shape-blue">(1, 4, 512)</span>
+              <span class="dim">— same shape, now position-aware</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ×6 LAYER START -->
+        <div class="repeat-badge">↻ BEGIN ENCODER LAYER (repeat ×6)</div>
+
+        <!-- Multi-Head Self-Attention -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span></div>
+        <div class="blk blk-attn" id="enc-self-attn">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#0969da;">Multi-Head Self-Attention</div>
+            <div class="blk-desc">
+              <b>Q, K, V</b> all come from same input (self-attention)<br>
+              <span style="color:#1f2328;">X</span> → 
+              <span class="shape shape-orange">Q (1,4,512)</span>
+              <span class="shape shape-orange">K (1,4,512)</span>
+              <span class="shape shape-orange">V (1,4,512)</span><br>
+              Reshape to <b>8 heads</b>: 
+              <span class="shape shape-orange">(1, 8, 4, 64)</span> each<br>
+              Scores: QK<sup>T</sup>/√64 → softmax → 
+              <span class="shape shape-red">(1, 8, 4, 4)</span> attention map<br>
+              × V → <span class="shape shape-orange">(1, 8, 4, 64)</span>
+              → concat → <span class="shape shape-purple">(1, 4, 512)</span><br>
+              × W<sup>O</sup> <span class="dim">(512×512)</span> → 
+              <span class="shape shape-blue">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add & Norm 1 -->
+        <div class="arrow-row">
+          <span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span>
+          <span class="residual-tag">+ residual</span>
+        </div>
+        <div class="blk blk-addnorm">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#656d76;">Add & LayerNorm</div>
+            <div class="blk-desc">
+              <span style="color:#8250df;">LayerNorm</span>(X<sub>input</sub> + Attention(X)) → 
+              <span class="shape shape-blue">(1, 4, 512)</span><br>
+              <span class="dim">Skip connection preserves gradient flow. Norm stabilizes training.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FFN -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span></div>
+        <div class="blk blk-ffn">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#1a7f37;">Feed-Forward Network</div>
+            <div class="blk-desc">
+              Applied to each token <b>independently</b> (no cross-token mixing)<br>
+              <span class="shape shape-blue">(1,4,512)</span>
+              → × W₁ <span class="dim">(512×2048)</span> + ReLU →
+              <span class="shape shape-green">(1, 4, 2048)</span><br>
+              → × W₂ <span class="dim">(2048×512)</span> →
+              <span class="shape shape-blue">(1, 4, 512)</span><br>
+              <span class="dim">Parameters: 512×2048 + 2048×512 = 2,097,152 (~2.1M)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add & Norm 2 -->
+        <div class="arrow-row">
+          <span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span>
+          <span class="residual-tag">+ residual</span>
+        </div>
+        <div class="blk blk-addnorm">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#656d76;">Add & LayerNorm</div>
+            <div class="blk-desc">
+              <span style="color:#8250df;">LayerNorm</span>(X + FFN(X)) → 
+              <span class="shape shape-blue">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="repeat-badge">↻ END ENCODER LAYER — repeat ×6</div>
+
+        <!-- Encoder Output -->
+        <div class="io-label io-enc" style="padding-bottom:12px;">
+          Encoder Output: <span class="shape shape-blue">(1, 4, 512)</span><br>
+          <span style="font-size:10px; font-weight:400; color:#656d76;">
+            Rich representations — each "The/cat/sat/down" now encodes full context<br>
+            This tensor is sent to <b>every</b> decoder layer's cross-attention
+          </span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===================== DECODER COLUMN ===================== -->
+    <div class="col">
+      <div class="col-header col-header-dec">
+        DECODER
+        <small>×6 identical layers</small>
+      </div>
+      <div class="flow-col flow-dec">
+
+        <!-- Input -->
+        <div class="io-label io-dec">
+          Target (shifted right): "&lt;BOS&gt; Die Katze setzte" &nbsp; <span class="shape shape-red">(1, 4)</span>
+        </div>
+
+        <!-- Embedding -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">lookup in W<sub>emb</sub> (37000×512)</span></div>
+        <div class="blk blk-embed">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#cf222e;">Target Embedding × √512</div>
+            <div class="blk-desc">
+              Same embedding dimension, separate vocabulary possible<br>
+              <span class="shape shape-red">(1, 4, 512)</span>
+              <span class="dim">T=4 decoder positions</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Positional Encoding -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">element-wise add</span></div>
+        <div class="blk blk-embed">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#1a7f37;">+ Positional Encoding</div>
+            <div class="blk-desc">
+              Same sinusoidal formula, applied to decoder positions<br>
+              Output: <span class="shape shape-red">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ×6 LAYER START -->
+        <div class="repeat-badge repeat-badge-dec">↻ BEGIN DECODER LAYER (repeat ×6)</div>
+
+        <!-- Masked Multi-Head Self-Attention -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span></div>
+        <div class="blk blk-masked">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#cf222e;">Masked Multi-Head Self-Attention</div>
+            <div class="blk-desc">
+              <b>Q, K, V</b> all from decoder input (self-attention)<br>
+              Same as encoder, but with <b>causal mask</b>:<br>
+              <span style="color:#cf222e;">−∞</span> added to future positions before softmax → 
+              <span class="shape shape-red">(1, 8, 4, 4)</span> &nbsp; <span class="dim">lower-triangular after softmax</span><br>
+              "Die" can only see [&lt;BOS&gt;, Die], not [Katze, setzte]<br>
+              Output: <span class="shape shape-red">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add & Norm 1 -->
+        <div class="arrow-row">
+          <span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span>
+          <span class="residual-tag">+ residual</span>
+        </div>
+        <div class="blk blk-addnorm">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#656d76;">Add & LayerNorm</div>
+            <div class="blk-desc">
+              <span style="color:#8250df;">LayerNorm</span>(X<sub>dec</sub> + MaskedAttn(X)) → 
+              <span class="shape shape-red">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cross-Attention -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span></div>
+        <div class="blk blk-cross" id="dec-cross-attn">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#9a6700;">⬅ Cross-Attention (Encoder-Decoder)</div>
+            <div class="blk-desc">
+              <b>Q</b> from decoder: <span class="shape shape-red">(1, 4, 512)</span> → 
+              <span class="shape shape-orange">Q (1, 8, 4, 64)</span><br>
+              <b>K, V</b> from <span style="color:#0969da;">encoder output</span>: 
+              <span class="shape shape-blue">(1, 4, 512)</span> → 
+              <span class="shape shape-orange">K, V (1, 8, 4, 64)</span><br>
+              Score: Q<sub>dec</sub> × K<sup>T</sup><sub style="color:#0969da;">enc</sub> / √64 → 
+              <span class="shape shape-orange">(1, 8, 4<sub style="color:#cf222e;">dec</sub>, 4<sub style="color:#0969da;">enc</sub>)</span><br>
+              <span class="dim">"Die" → 72% attention on "The" from encoder</span><br>
+              <span class="dim">"Katze" → 68% attention on "cat" from encoder</span><br>
+              Output: <span class="shape shape-red">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add & Norm 2 -->
+        <div class="arrow-row">
+          <span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span>
+          <span class="residual-tag">+ residual</span>
+        </div>
+        <div class="blk blk-addnorm">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#656d76;">Add & LayerNorm</div>
+            <div class="blk-desc">
+              <span style="color:#8250df;">LayerNorm</span>(X + CrossAttn(X)) → 
+              <span class="shape shape-red">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FFN -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span></div>
+        <div class="blk blk-ffn">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#1a7f37;">Feed-Forward Network</div>
+            <div class="blk-desc">
+              Identical structure to encoder FFN, separate weights<br>
+              <span class="shape shape-red">(1,4,512)</span> →
+              <span class="shape shape-green">(1, 4, 2048)</span> →
+              <span class="shape shape-red">(1, 4, 512)</span><br>
+              <span class="dim">ReLU activation, 2.1M params per layer</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add & Norm 3 -->
+        <div class="arrow-row">
+          <span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span>
+          <span class="residual-tag">+ residual</span>
+        </div>
+        <div class="blk blk-addnorm">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#656d76;">Add & LayerNorm</div>
+            <div class="blk-desc">
+              <span style="color:#8250df;">LayerNorm</span>(X + FFN(X)) → 
+              <span class="shape shape-red">(1, 4, 512)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="repeat-badge repeat-badge-dec">↻ END DECODER LAYER — repeat ×6</div>
+
+        <!-- Linear + Softmax -->
+        <div class="arrow-row"><span class="arr">▼</span><span class="arr-shape">(1, 4, 512)</span></div>
+        <div class="blk blk-out">
+          <div class="blk-inner">
+            <div class="blk-label" style="color:#8250df;">Linear Projection + Softmax</div>
+            <div class="blk-desc">
+              × W<sub>vocab</sub> <span class="dim">(512 × 37000)</span> → 
+              <span class="shape shape-purple">(1, 4, 37000)</span><br>
+              Softmax per position → probability over entire vocabulary<br>
+              <span class="dim">Position 0: P("Die") = 0.89 &nbsp;|&nbsp; Position 1: P("Katze") = 0.82</span><br>
+              <span class="dim">Position 2: P("setzte") = 0.71 &nbsp;|&nbsp; Position 3: P("sich") = 0.93</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output -->
+        <div class="io-label io-dec" style="padding-bottom:12px;">
+          Output: <span class="shape shape-purple">(1, 4, 37000)</span> → argmax → "Die Katze setzte sich"
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- end .dual -->
+
+  <!-- ====== CROSS-ATTENTION BRIDGE (visual) ====== -->
+  <div style="margin-top:20px; padding:14px 20px; background:#f6f8fa; border:1px solid #d0d7de; border-radius:10px;">
+    <div style="text-align:center; font-size:13px; font-weight:700; color:#9a6700; margin-bottom:10px;">
+      Cross-Attention Bridge: How Encoder Feeds the Decoder
+    </div>
+    <div style="display:flex; align-items:center; gap:12px; justify-content:center; flex-wrap:wrap;">
+      <div style="text-align:center;">
+        <div style="font-size:11px; color:#0969da; font-weight:700;">Encoder Output</div>
+        <div class="shape shape-blue" style="margin:4px auto;">(1, 4, 512)</div>
+        <div style="font-size:9px; color:#656d76;">Computed once</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+        <div style="font-size:9px; color:#9a6700;">K, V projections</div>
+        <div style="width:120px; height:2px; background:repeating-linear-gradient(90deg, #e3b341 0, #e3b341 8px, transparent 8px, transparent 14px);"></div>
+        <div style="font-size:20px; color:#9a6700;">→</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:11px; color:#cf222e; font-weight:700;">Every Decoder Layer</div>
+        <div style="display:flex; gap:4px; justify-content:center; margin:4px 0;">
+          <div style="width:24px; height:24px; border-radius:4px; background:#ffebe9; border:1px solid #cf222e40; font-size:8px; display:flex; align-items:center; justify-content:center; color:#cf222e;">L1</div>
+          <div style="width:24px; height:24px; border-radius:4px; background:#ffebe9; border:1px solid #cf222e40; font-size:8px; display:flex; align-items:center; justify-content:center; color:#cf222e;">L2</div>
+          <div style="width:24px; height:24px; border-radius:4px; background:#ffebe9; border:1px solid #cf222e40; font-size:8px; display:flex; align-items:center; justify-content:center; color:#cf222e;">L3</div>
+          <div style="width:24px; height:24px; border-radius:4px; background:#ffebe9; border:1px solid #cf222e40; font-size:8px; display:flex; align-items:center; justify-content:center; color:#cf222e;">L4</div>
+          <div style="width:24px; height:24px; border-radius:4px; background:#ffebe9; border:1px solid #cf222e40; font-size:8px; display:flex; align-items:center; justify-content:center; color:#cf222e;">L5</div>
+          <div style="width:24px; height:24px; border-radius:4px; background:#ffebe9; border:1px solid #cf222e40; font-size:8px; display:flex; align-items:center; justify-content:center; color:#cf222e;">L6</div>
+        </div>
+        <div style="font-size:9px; color:#656d76;">Each layer uses encoder output for K, V</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== PARAMETER COUNT SUMMARY ====== -->
+  <div class="summary">
+    <h2>Parameter Count Per Layer</h2>
+    <table class="stbl">
+      <tr>
+        <th>Component</th>
+        <th>Weight Matrix</th>
+        <th>Shape</th>
+        <th>Params</th>
+        <th>Notes</th>
+      </tr>
+      <tr>
+        <td class="sec">Encoder Self-Attn</td>
+        <td class="mono">W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup></td>
+        <td class="mono">3 × (512, 512)</td>
+        <td class="mono">786,432</td>
+        <td class="dim">+ 3 bias vectors of 512</td>
+      </tr>
+      <tr>
+        <td></td>
+        <td class="mono">W<sup>O</sup></td>
+        <td class="mono">(512, 512)</td>
+        <td class="mono">262,144</td>
+        <td class="dim">output projection</td>
+      </tr>
+      <tr>
+        <td class="sec">Encoder FFN</td>
+        <td class="mono">W₁, W₂</td>
+        <td class="mono">(512,2048) + (2048,512)</td>
+        <td class="mono">2,097,152</td>
+        <td class="dim">+ biases</td>
+      </tr>
+      <tr>
+        <td class="sec">Encoder LayerNorms</td>
+        <td class="mono">γ, β × 2</td>
+        <td class="mono">2 × 512 × 2</td>
+        <td class="mono">2,048</td>
+        <td class="dim">scale + shift</td>
+      </tr>
+      <tr style="background:#ddf4ff20;">
+        <td class="sec" style="font-size:12px;">Encoder Layer Total</td>
+        <td></td>
+        <td></td>
+        <td class="mono" style="font-weight:700;">~3.15M</td>
+        <td class="dim">× 6 layers = ~18.9M</td>
+      </tr>
+      <tr><td colspan="5" style="border:none; height:8px;"></td></tr>
+      <tr>
+        <td class="sec-d">Dec Masked Self-Attn</td>
+        <td class="mono">W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>, W<sup>O</sup></td>
+        <td class="mono">4 × (512, 512)</td>
+        <td class="mono">1,048,576</td>
+        <td class="dim">same structure as encoder</td>
+      </tr>
+      <tr>
+        <td class="sec-d">Dec Cross-Attn</td>
+        <td class="mono">W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>, W<sup>O</sup></td>
+        <td class="mono">4 × (512, 512)</td>
+        <td class="mono">1,048,576</td>
+        <td class="dim">Q from dec, K/V from enc</td>
+      </tr>
+      <tr>
+        <td class="sec-d">Dec FFN</td>
+        <td class="mono">W₁, W₂</td>
+        <td class="mono">(512,2048) + (2048,512)</td>
+        <td class="mono">2,097,152</td>
+        <td class="dim">separate from encoder FFN</td>
+      </tr>
+      <tr>
+        <td class="sec-d">Dec LayerNorms</td>
+        <td class="mono">γ, β × 3</td>
+        <td class="mono">3 × 512 × 2</td>
+        <td class="mono">3,072</td>
+        <td class="dim">3 sub-layers → 3 norms</td>
+      </tr>
+      <tr style="background:#ffebe920;">
+        <td class="sec-d" style="font-size:12px;">Decoder Layer Total</td>
+        <td></td>
+        <td></td>
+        <td class="mono" style="font-weight:700;">~4.2M</td>
+        <td class="dim">× 6 layers = ~25.2M</td>
+      </tr>
+      <tr><td colspan="5" style="border:none; height:8px;"></td></tr>
+      <tr style="background:#f6f8fa;">
+        <td style="font-weight:700; color:#1f2328;">Embeddings (shared)</td>
+        <td class="mono">W<sub>emb</sub></td>
+        <td class="mono">(37000, 512)</td>
+        <td class="mono">18,944,000</td>
+        <td class="dim">shared input + output embedding</td>
+      </tr>
+      <tr style="background:#271f3d30;">
+        <td style="font-weight:700; color:#8250df; font-size:13px;">TOTAL MODEL</td>
+        <td></td>
+        <td></td>
+        <td class="mono" style="font-weight:700; color:#8250df; font-size:13px;">~65M</td>
+        <td class="dim">Transformer Base</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ====== LEGEND ====== -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#0969da;"></div>Self-Attention</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#da3633;"></div>Masked Self-Attention</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d29922;"></div>Cross-Attention</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#238636;"></div>Feed-Forward</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#8957e5;"></div>Output Projection</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#656d76;"></div>Add &amp; LayerNorm</div>
+    <div class="legend-item" style="color:#656d76;">── residual connection</div>
+  </div>
+
+  <p class="note-bottom">Shapes are exact for the paper's "base" model. Numerical attention values are illustrative.</p>
+</div>
+</body>
+</html>

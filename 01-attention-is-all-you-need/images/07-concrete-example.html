@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Concrete Example: A Batch Through the Transformer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; padding: 40px 20px; display: flex; justify-content: center; }
+  .container { max-width: 1100px; width: 100%; }
+  h1 { text-align: center; font-size: 26px; margin-bottom: 4px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin-bottom: 28px; }
+  .config { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px; }
+  .chip { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 16px; padding: 4px 12px; font-size: 11px; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+  .chip b { color: #0969da; }
+  .step { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+  .step-header { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #d0d7de; }
+  .step-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .step-title { font-size: 15px; font-weight: 700; }
+  .step-shape { margin-left: auto; font-family: 'Cascadia Code', monospace; font-size: 12px; padding: 3px 10px; border-radius: 6px; white-space: nowrap; }
+  .step-body { padding: 14px 18px; }
+  .s-blue .step-num { background: #0969da; }
+  .s-blue .step-shape { background: #ddf4ff; color: #0969da; border: 1px solid #388bfd30; }
+  .s-green .step-num { background: #238636; }
+  .s-green .step-shape { background: #dafbe1; color: #1a7f37; border: 1px solid #3fb95030; }
+  .s-orange .step-num { background: #d29922; }
+  .s-orange .step-shape { background: #fff8c5; color: #9a6700; border: 1px solid #d2992230; }
+  .s-red .step-num { background: #da3633; }
+  .s-red .step-shape { background: #ffebe9; color: #cf222e; border: 1px solid #f8514930; }
+  .s-purple .step-num { background: #8957e5; }
+  .s-purple .step-shape { background: #f5f0ff; color: #8250df; border: 1px solid #8957e530; }
+  .s-teal .step-num { background: #0e8a16; }
+  .s-teal .step-shape { background: #e6ffec; color: #0e8a16; border: 1px solid #0e8a1630; }
+  .matrix { border-collapse: collapse; font-family: 'Cascadia Code', monospace; font-size: 11px; margin: 8px 0; }
+  .matrix td { padding: 3px 6px; text-align: right; border: 1px solid #d0d7de; min-width: 44px; }
+  .matrix th { padding: 3px 6px; text-align: center; font-size: 9px; color: #656d76; border: 1px solid #d0d7de; font-weight: 400; }
+  .matrix .row-label { text-align: left; color: #656d76; font-weight: 600; font-size: 10px; background: #ffffff; }
+  .matrix .val { color: #1f2328; }
+  .note { font-size: 11px; color: #656d76; line-height: 1.5; margin-top: 6px; }
+  .note b { color: #1f2328; }
+  .op { font-family: 'Cascadia Code', monospace; font-size: 12px; color: #8250df; background: #f5f0ff; padding: 2px 8px; border-radius: 4px; display: inline-block; margin: 4px 0; border: 1px solid #8250df30; }
+  .dim-note { display: inline-block; font-family: monospace; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #ffffff; border: 1px solid #d0d7de; color: #656d76; }
+  .ellipsis { color: #656d76; font-size: 13px; text-align: center; padding: 4px; }
+  .side-by-side { display: flex; gap: 16px; flex-wrap: wrap; }
+  .side-by-side > div { flex: 1; min-width: 300px; }
+  .section-label { font-size: 12px; font-weight: 700; margin: 12px 0 6px; padding: 4px 10px; border-radius: 4px; display: inline-block; }
+  .label-enc { background: #ddf4ff; color: #0969da; }
+  .label-dec { background: #ffebe9; color: #cf222e; }
+  .label-cross { background: #fff8c5; color: #9a6700; }
+  .big-arrow { text-align: center; padding: 12px 0; }
+  .big-arrow span { display: inline-block; font-size: 14px; color: #0969da; padding: 6px 24px; border: 2px solid #388bfd30; border-radius: 8px; background: #ffffff; }
+  .code-block { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 16px; font-family: 'Cascadia Code', monospace; font-size: 12px; line-height: 1.6; overflow-x: auto; margin: 8px 0; }
+  .code-block .kw { color: #cf222e; }
+  .code-block .fn { color: #8250df; }
+  .code-block .cm { color: #656d76; }
+  .code-block .num { color: #0550ae; }
+  .batch-row { display: flex; gap: 6px; margin-bottom: 4px; align-items: center; }
+  .batch-label { font-size: 10px; font-weight: 700; width: 50px; text-align: right; padding-right: 6px; font-family: monospace; }
+  .token-pill { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .callout { background: #fff8c5; border: 1px solid #d4a72c40; border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
+  .callout-title { font-size: 12px; font-weight: 700; color: #9a6700; margin-bottom: 4px; }
+  .callout p { font-size: 11px; color: #1f2328; line-height: 1.5; }
+  .reuse-table { border-collapse: collapse; font-size: 11px; width: 100%; margin: 8px 0; }
+  .reuse-table th { background: #f6f8fa; border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; font-weight: 700; color: #1f2328; }
+  .reuse-table td { border: 1px solid #d0d7de; padding: 6px 10px; }
+  .reuse-table .reused { background: #dafbe1; color: #1a7f37; font-weight: 600; }
+  .reuse-table .new { background: #ffebe9; color: #cf222e; font-weight: 600; }
+  .reuse-table .shared { background: #ddf4ff; color: #0969da; font-weight: 600; }
+  .next-step { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 12px; background: #ddf4ff; border: 1px solid #388bfd30; border-radius: 6px; font-size: 10px; color: #0969da; font-family: 'Cascadia Code', monospace; }
+  .next-step b { color: #0550ae; margin-right: 2px; }
+  .next-step .shape-tag { background: #0969da15; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>A Batch Through the Transformer</h1>
+  <p class="sub">Concrete numerical example &mdash; 3 sentences through the encoder, with actual PE computation, W matrix explanation, and layer reuse</p>
+  <div class="config">
+    <div class="chip"><b>B</b> = 3 (batch)</div>
+    <div class="chip"><b>S</b> = 4 tokens</div>
+    <div class="chip"><b>d<sub>model</sub></b> = 512</div>
+    <div class="chip"><b>h</b> = 8 heads</div>
+    <div class="chip"><b>d<sub>k</sub></b> = 64</div>
+    <div class="chip"><b>d<sub>ff</sub></b> = 2048</div>
+    <div class="chip"><b>vocab</b> &asymp; 37,000</div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step s-blue">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Tokenize a Batch of 3 Sentences</div>
+      <div class="step-shape">(3, 4) &mdash; integer IDs</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:10px;">Three sentences are tokenized in parallel. Each maps to 4 token IDs from the vocabulary.</p>
+      <div class="batch-row">
+        <div class="batch-label" style="color:#0969da;">B=0:</div>
+        <div class="token-pill" style="background:#0969da20; color:#0969da;">The</div>
+        <div class="token-pill" style="background:#0969da20; color:#0969da;">cat</div>
+        <div class="token-pill" style="background:#0969da20; color:#0969da;">sat</div>
+        <div class="token-pill" style="background:#0969da20; color:#0969da;">down</div>
+        <span style="font-size:10px; color:#656d76; font-family:monospace; margin-left:8px;">[1820, 5765, 9341, 2087]</span>
+      </div>
+      <div class="batch-row">
+        <div class="batch-label" style="color:#1a7f37;">B=1:</div>
+        <div class="token-pill" style="background:#1a7f3720; color:#1a7f37;">A</div>
+        <div class="token-pill" style="background:#1a7f3720; color:#1a7f37;">dog</div>
+        <div class="token-pill" style="background:#1a7f3720; color:#1a7f37;">runs</div>
+        <div class="token-pill" style="background:#1a7f3720; color:#1a7f37;">fast</div>
+        <span style="font-size:10px; color:#656d76; font-family:monospace; margin-left:8px;">[64, 3899, 4481, 2951]</span>
+      </div>
+      <div class="batch-row">
+        <div class="batch-label" style="color:#9a6700;">B=2:</div>
+        <div class="token-pill" style="background:#9a670020; color:#9a6700;">She</div>
+        <div class="token-pill" style="background:#9a670020; color:#9a6700;">reads</div>
+        <div class="token-pill" style="background:#9a670020; color:#9a6700;">a</div>
+        <div class="token-pill" style="background:#9a670020; color:#9a6700;">book</div>
+        <span style="font-size:10px; color:#656d76; font-family:monospace; margin-left:8px;">[1255, 7142, 64, 3420]</span>
+      </div>
+      <p class="note" style="margin-top:10px;">Tensor shape: <b>(3, 4)</b> &mdash; 3 sentences &times; 4 tokens each. All 3 sentences are processed <b>simultaneously</b> through the entire model.</p>
+      <div class="next-step">⤷ <b>Input to Step 2:</b> Token ID tensor <span class="shape-tag">(3, 4)</span> &mdash; 12 integer IDs to look up in the embedding table</div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step s-blue">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Token Embedding Lookup</div>
+      <div class="step-shape">(3, 4) &rarr; (3, 4, 512)</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:8px;">Each token ID indexes a row in <b>W<sub>emb</sub></b> &isin; &#8477;<sup>37000&times;512</sup>. Result is multiplied by &radic;512 &asymp; 22.6.</p>
+      <table class="matrix">
+        <tr><th></th><th>dim 0</th><th>dim 1</th><th>dim 2</th><th>&hellip;</th><th>dim 511</th></tr>
+        <tr style="border-top: 2px solid #0969da;">
+          <td class="row-label" style="background:#0969da10;">B0: The</td>
+          <td class="val">-1.42</td><td class="val">0.83</td><td class="val">-0.17</td><td class="ellipsis">&hellip;</td><td class="val">-0.91</td>
+        </tr>
+        <tr><td class="row-label" style="background:#0969da10;">B0: cat</td><td class="val">0.65</td><td class="val">-0.34</td><td class="val">1.21</td><td class="ellipsis">&hellip;</td><td class="val">0.12</td></tr>
+        <tr><td class="row-label" style="background:#0969da10;">B0: sat</td><td class="val">-0.08</td><td class="val">1.45</td><td class="val">0.33</td><td class="ellipsis">&hellip;</td><td class="val">-1.67</td></tr>
+        <tr><td class="row-label" style="background:#0969da10;">B0: down</td><td class="val">0.97</td><td class="val">-0.52</td><td class="val">-1.08</td><td class="ellipsis">&hellip;</td><td class="val">0.44</td></tr>
+        <tr style="border-top: 2px solid #1a7f37;">
+          <td class="row-label" style="background:#1a7f3710;">B1: A</td>
+          <td class="val">0.31</td><td class="val">-1.12</td><td class="val">0.88</td><td class="ellipsis">&hellip;</td><td class="val">0.55</td>
+        </tr>
+        <tr><td class="row-label" style="background:#1a7f3710;">B1: dog</td><td class="val">1.07</td><td class="val">0.41</td><td class="val">-0.63</td><td class="ellipsis">&hellip;</td><td class="val">-0.29</td></tr>
+        <tr><td colspan="6" class="ellipsis">&hellip; B1: runs, fast, B2: She, reads, a, book &hellip;</td></tr>
+      </table>
+      <p class="note">Shape: <b>(3, 4, 512)</b> &mdash; 3 batches &times; 4 tokens &times; 512 dims. &ldquo;A&rdquo; in B1 and &ldquo;a&rdquo; in B2 may map to the same embedding if they share a BPE token ID.</p>
+      <div class="next-step">⤷ <b>Input to Step 3:</b> Raw embeddings <span class="shape-tag">(3, 4, 512)</span> &mdash; each token is a 512-d vector, but has no position info yet</div>
+    </div>
+  </div>
+
+  <!-- STEP 3: PE DETAILED -->
+  <div class="step s-green">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">+ Positional Encoding &mdash; How It&rsquo;s Computed</div>
+      <div class="step-shape">(3, 4, 512) + (4, 512) &rarr; (3, 4, 512)</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:8px;">The PE matrix is <b>computed once</b> from the formulas below, <b>not learned</b>. The same PE matrix is added to all 3 sentences in the batch.</p>
+      <div class="code-block">
+        <span class="cm">// For each position pos and dimension index i:</span><br>
+        PE[pos, 2i] &nbsp;&nbsp;= <span class="fn">sin</span>(pos / <span class="num">10000</span><sup>2i/512</sup>)<br>
+        PE[pos, 2i+1] = <span class="fn">cos</span>(pos / <span class="num">10000</span><sup>2i/512</sup>)<br><br>
+        <span class="cm">// Example: pos=1, dim=0 (i=0):</span><br>
+        PE[1, 0] = <span class="fn">sin</span>(1 / 10000<sup>0/512</sup>) = <span class="fn">sin</span>(1 / 1) = <span class="fn">sin</span>(1.0) = <span class="num">0.8415</span><br>
+        PE[1, 1] = <span class="fn">cos</span>(1 / 10000<sup>0/512</sup>) = <span class="fn">cos</span>(1.0) = <span class="num">0.5403</span><br><br>
+        <span class="cm">// Example: pos=1, dim=2 (i=1):</span><br>
+        PE[1, 2] = <span class="fn">sin</span>(1 / 10000<sup>2/512</sup>) = <span class="fn">sin</span>(1 / 1.018) = <span class="fn">sin</span>(0.9823) = <span class="num">0.8280</span><br>
+        PE[1, 3] = <span class="fn">cos</span>(1 / 10000<sup>2/512</sup>) = <span class="fn">cos</span>(0.9823) = <span class="num">0.5607</span><br><br>
+        <span class="cm">// Example: pos=1, dim=510 (i=255, highest freq pair):</span><br>
+        PE[1, 510] = <span class="fn">sin</span>(1 / 10000<sup>510/512</sup>) = <span class="fn">sin</span>(0.000102) &asymp; <span class="num">0.0001</span><br>
+        PE[1, 511] = <span class="fn">cos</span>(1 / 10000<sup>510/512</sup>) = <span class="fn">cos</span>(0.000102) &asymp; <span class="num">1.0000</span>
+      </div>
+      <p class="note" style="margin-bottom:8px; margin-top:10px;"><b>Full PE matrix</b> &mdash; shape (4, 512), one row per position:</p>
+      <table class="matrix">
+        <tr><th></th><th>dim 0<br><span style="font-size:8px;">sin, f=1.0</span></th><th>dim 1<br><span style="font-size:8px;">cos, f=1.0</span></th><th>dim 2<br><span style="font-size:8px;">sin, f&asymp;0.98</span></th><th>dim 3<br><span style="font-size:8px;">cos, f&asymp;0.98</span></th><th>&hellip;</th><th>dim 510<br><span style="font-size:8px;">sin, f&asymp;0.0001</span></th><th>dim 511<br><span style="font-size:8px;">cos, f&asymp;0.0001</span></th></tr>
+        <tr><td class="row-label">pos 0</td><td class="val" style="color:#1a7f37;">0.0000</td><td class="val">1.0000</td><td class="val" style="color:#1a7f37;">0.0000</td><td class="val">1.0000</td><td class="ellipsis">&hellip;</td><td class="val" style="color:#1a7f37;">0.0000</td><td class="val">1.0000</td></tr>
+        <tr><td class="row-label">pos 1</td><td class="val" style="color:#1a7f37;">0.8415</td><td class="val">0.5403</td><td class="val" style="color:#1a7f37;">0.8280</td><td class="val">0.5607</td><td class="ellipsis">&hellip;</td><td class="val" style="color:#1a7f37;">0.0001</td><td class="val">1.0000</td></tr>
+        <tr><td class="row-label">pos 2</td><td class="val" style="color:#1a7f37;">0.9093</td><td class="val">-0.4161</td><td class="val" style="color:#1a7f37;">0.9013</td><td class="val">-0.4332</td><td class="ellipsis">&hellip;</td><td class="val" style="color:#1a7f37;">0.0002</td><td class="val">1.0000</td></tr>
+        <tr><td class="row-label">pos 3</td><td class="val" style="color:#1a7f37;">0.1411</td><td class="val">-0.9900</td><td class="val" style="color:#1a7f37;">0.1597</td><td class="val">-0.9872</td><td class="ellipsis">&hellip;</td><td class="val" style="color:#1a7f37;">0.0003</td><td class="val">1.0000</td></tr>
+      </table>
+      <div class="callout">
+        <div class="callout-title">Key insight: frequency varies by dimension</div>
+        <p><b>Low dims</b> (0, 1): frequency &asymp; 1.0 &rarr; oscillates rapidly. Distinguishes adjacent tokens.<br>
+        <b>High dims</b> (510, 511): frequency &asymp; 0.0001 &rarr; barely changes. Encodes coarse position.<br>
+        Together, every position gets a <b>unique fingerprint</b>. The same PE row is added across all 3 batches.</p>
+      </div>
+      <div class="next-step">⤷ <b>Input to Step 4:</b> Position-aware embeddings X <span class="shape-tag">(3, 4, 512)</span> &mdash; this X is also saved as X<sub>input</sub> for the residual connection in Step 9</div>
+    </div>
+  </div>
+
+  <!-- STEP 4: Q,K,V WHAT IS W -->
+  <div class="step s-orange">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Project Q, K, V &mdash; What Are the W Matrices?</div>
+      <div class="step-shape">(3, 4, 512) &times; W &rarr; 3 &times; (3, 4, 512)</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:10px;">Three <b>learned weight matrices</b> transform the input into three different &ldquo;views.&rdquo; Each W is <b>512&times;512</b> &mdash; all 8 heads packed into one matrix.</p>
+      <table class="reuse-table">
+        <tr><th>Matrix</th><th>Shape</th><th>What It Does</th><th>Analogy</th></tr>
+        <tr>
+          <td><b>W<sup>Q</sup></b> (Query)</td>
+          <td><span class="dim-note">(512, 512)</span></td>
+          <td>Transforms each token into &ldquo;what am I looking for?&rdquo;</td>
+          <td>&ldquo;cat&rdquo; asks &ldquo;who is my verb?&rdquo;</td>
+        </tr>
+        <tr>
+          <td><b>W<sup>K</sup></b> (Key)</td>
+          <td><span class="dim-note">(512, 512)</span></td>
+          <td>Transforms each token into &ldquo;what do I advertise?&rdquo;</td>
+          <td>&ldquo;sat&rdquo; advertises &ldquo;I&rsquo;m a verb&rdquo;</td>
+        </tr>
+        <tr>
+          <td><b>W<sup>V</sup></b> (Value)</td>
+          <td><span class="dim-note">(512, 512)</span></td>
+          <td>Transforms each token into &ldquo;what info do I share?&rdquo;</td>
+          <td>&ldquo;sat&rdquo;&rsquo;s meaning content</td>
+        </tr>
+        <tr>
+          <td><b>W<sup>O</sup></b> (Output)</td>
+          <td><span class="dim-note">(512, 512)</span></td>
+          <td>Mixes concatenated head outputs back together</td>
+          <td>Merges 8 perspectives into one</td>
+        </tr>
+      </table>
+      <div class="code-block" style="margin-top:10px;">
+        Q = X @ W<sup>Q</sup> &nbsp; <span class="cm">// (3,4,512) &times; (512,512) &rarr; (3,4,512)</span><br>
+        K = X @ W<sup>K</sup> &nbsp; <span class="cm">// (3,4,512) &times; (512,512) &rarr; (3,4,512)</span><br>
+        V = X @ W<sup>V</sup> &nbsp; <span class="cm">// (3,4,512) &times; (512,512) &rarr; (3,4,512)</span><br><br>
+        <span class="cm">// W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup> are SHARED across all positions and all batches.</span><br>
+        <span class="cm">// The same W<sup>Q</sup> transforms &ldquo;The&rdquo;, &ldquo;cat&rdquo;, &ldquo;sat&rdquo;, &ldquo;down&rdquo; &mdash; AND all 3 sentences.</span><br>
+        <span class="cm">// Params per attention sub-layer: 4 &times; 512 &times; 512 = 1,048,576</span>
+      </div>
+      <div class="callout">
+        <div class="callout-title">Why 512&times;512 and not 512&times;64?</div>
+        <p>The paper packs all 8 heads into <b>one big matrix</b> for efficiency. W<sup>Q</sup> &isin; &#8477;<sup>512&times;512</sup> is equivalent to 8 separate W<sub>i</sub><sup>Q</sup> &isin; &#8477;<sup>512&times;64</sup> stacked side by side. One large matmul instead of 8 small ones &mdash; <b>same math, much faster</b>.</p>
+      </div>
+      <div class="next-step">⤷ <b>Input to Step 5:</b> Three separate tensors &mdash; Q <span class="shape-tag">(3, 4, 512)</span>, K <span class="shape-tag">(3, 4, 512)</span>, V <span class="shape-tag">(3, 4, 512)</span> &mdash; each token now has query, key, and value views</div>
+    </div>
+  </div>
+
+  <!-- STEP 5: RESHAPE WHY -->
+  <div class="step s-orange">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">Reshape into 8 Heads &mdash; Why Split into Chunks?</div>
+      <div class="step-shape">(3, 4, 512) &rarr; (3, 8, 4, 64)</div>
+    </div>
+    <div class="step-body">
+      <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+        <div>
+          <p style="font-size:11px; font-weight:700; color:#9a6700; margin-bottom:4px;">Before: one 512-dim vector per token</p>
+          <table class="matrix">
+            <tr><th colspan="9" style="color:#9a6700;">Q for B0: shape (4, 512)</th></tr>
+            <tr><td class="row-label">The</td><td class="val" style="color:#0969da; font-size:9px;">d0..63</td><td class="val" style="color:#1a7f37; font-size:9px;">d64..127</td><td class="val" style="color:#9a6700; font-size:9px;">d128..191</td><td class="val" style="color:#cf222e; font-size:9px;">d192..255</td><td class="val" style="color:#8250df; font-size:9px;">d256..319</td><td class="val" style="font-size:9px; color:#656d76;">d320..383</td><td class="val" style="font-size:9px; color:#656d76;">d384..447</td><td class="val" style="font-size:9px; color:#656d76;">d448..511</td></tr>
+            <tr><td class="row-label">cat</td><td class="val" style="color:#0969da; font-size:9px;">d0..63</td><td class="val" style="color:#1a7f37; font-size:9px;">d64..127</td><td colspan="6" class="ellipsis">&hellip;</td></tr>
+            <tr><td class="row-label">sat</td><td class="val" style="color:#0969da; font-size:9px;">d0..63</td><td class="val" style="color:#1a7f37; font-size:9px;">d64..127</td><td colspan="6" class="ellipsis">&hellip;</td></tr>
+            <tr><td class="row-label">down</td><td class="val" style="color:#0969da; font-size:9px;">d0..63</td><td class="val" style="color:#1a7f37; font-size:9px;">d64..127</td><td colspan="6" class="ellipsis">&hellip;</td></tr>
+          </table>
+        </div>
+        <span style="font-size:28px; color:#d0d7de;">&rarr;</span>
+        <div>
+          <p style="font-size:11px; font-weight:700; color:#9a6700; margin-bottom:4px;">After: 8 independent heads</p>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <div style="border:2px solid #0969da; border-radius:6px; padding:4px 6px; text-align:center;">
+              <div style="font-size:9px; color:#0969da; font-weight:700;">Head 1</div>
+              <div style="font-size:9px;">(4, 64)</div>
+              <div style="font-size:8px; color:#656d76;">d0..63</div>
+            </div>
+            <div style="border:2px solid #1a7f37; border-radius:6px; padding:4px 6px; text-align:center;">
+              <div style="font-size:9px; color:#1a7f37; font-weight:700;">Head 2</div>
+              <div style="font-size:9px;">(4, 64)</div>
+              <div style="font-size:8px; color:#656d76;">d64..127</div>
+            </div>
+            <div style="font-size:16px; color:#656d76; align-self:center;">&hellip;</div>
+            <div style="border:2px solid #656d76; border-radius:6px; padding:4px 6px; text-align:center;">
+              <div style="font-size:9px; color:#656d76; font-weight:700;">Head 8</div>
+              <div style="font-size:9px;">(4, 64)</div>
+              <div style="font-size:8px; color:#656d76;">d448..511</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="callout">
+        <div class="callout-title">Why reshape into chunks?</div>
+        <p><b>1. Multiple perspectives:</b> Each head runs attention over 64 dims independently. Head 1 learns &ldquo;subject-verb.&rdquo; Head 5 learns &ldquo;adjective-noun.&rdquo; One big head averages everything &mdash; 8 small heads specialize.<br>
+        <b>2. Same total cost:</b> 8 &times; (4&times;64)&times;(64&times;4) = 1 &times; (4&times;512)&times;(512&times;4). Identical computation, just partitioned.<br>
+        <b>3. GPU efficiency:</b> Reshape is free (no data copy, just a view change). The 8 heads become a batch-like dimension &mdash; one fused kernel.</p>
+      </div>
+      <p class="note">Full shape: <b>(3, 8, 4, 64)</b> &mdash; batch=3, heads=8, tokens=4, dim=64. Same for Q, K, and V.</p>
+      <div class="next-step">⤷ <b>Input to Step 6:</b> Q <span class="shape-tag">(3, 8, 4, 64)</span> and K <span class="shape-tag">(3, 8, 4, 64)</span> &mdash; Q and K are multiplied; V <span class="shape-tag">(3, 8, 4, 64)</span> is held for Step 7</div>
+    </div>
+  </div>
+
+  <!-- STEP 6: ATTENTION SCORES -->
+  <div class="step s-red">
+    <div class="step-header">
+      <div class="step-num">6</div>
+      <div class="step-title">QK<sup>T</sup> / &radic;64 &rarr; Softmax &mdash; Attention Scores</div>
+      <div class="step-shape">(3, 8, 4, 64) &times; (3, 8, 64, 4) &rarr; (3, 8, 4, 4)</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:8px;">For each batch &times; each head, Q &times; K<sup>T</sup> gives a 4&times;4 score matrix. Divide by &radic;64 = 8, softmax each row. Showing <b>B0, Head 1</b>:</p>
+      <div class="side-by-side">
+        <div>
+          <p style="font-size:11px; color:#cf222e; font-weight:700; margin-bottom:4px;">Raw Scores (QK<sup>T</sup> / 8)</p>
+          <table class="matrix">
+            <tr><th></th><th style="color:#0969da;">The</th><th style="color:#1a7f37;">cat</th><th style="color:#9a6700;">sat</th><th style="color:#cf222e;">down</th></tr>
+            <tr><td class="row-label" style="color:#0969da;">The&rarr;</td><td class="val">2.1</td><td class="val">0.8</td><td class="val">-0.3</td><td class="val">0.1</td></tr>
+            <tr><td class="row-label" style="color:#1a7f37;">cat&rarr;</td><td class="val">0.5</td><td class="val">1.9</td><td class="val">1.4</td><td class="val">0.2</td></tr>
+            <tr><td class="row-label" style="color:#9a6700;">sat&rarr;</td><td class="val">-0.1</td><td class="val">1.7</td><td class="val">1.5</td><td class="val">2.3</td></tr>
+            <tr><td class="row-label" style="color:#cf222e;">down&rarr;</td><td class="val">0.0</td><td class="val">0.3</td><td class="val">2.6</td><td class="val">1.8</td></tr>
+          </table>
+        </div>
+        <div>
+          <p style="font-size:11px; color:#1a7f37; font-weight:700; margin-bottom:4px;">After Softmax (rows &rarr; 1.0)</p>
+          <table class="matrix">
+            <tr><th></th><th style="color:#0969da;">The</th><th style="color:#1a7f37;">cat</th><th style="color:#9a6700;">sat</th><th style="color:#cf222e;">down</th></tr>
+            <tr><td class="row-label" style="color:#0969da;">The&rarr;</td><td class="val" style="color:#1a7f37; font-weight:700;">0.58</td><td class="val">0.16</td><td class="val">0.05</td><td class="val">0.08</td></tr>
+            <tr><td class="row-label" style="color:#1a7f37;">cat&rarr;</td><td class="val">0.10</td><td class="val" style="color:#1a7f37; font-weight:700;">0.41</td><td class="val">0.25</td><td class="val">0.07</td></tr>
+            <tr><td class="row-label" style="color:#9a6700;">sat&rarr;</td><td class="val">0.04</td><td class="val">0.24</td><td class="val">0.20</td><td class="val" style="color:#1a7f37; font-weight:700;">0.44</td></tr>
+            <tr><td class="row-label" style="color:#cf222e;">down&rarr;</td><td class="val">0.04</td><td class="val">0.05</td><td class="val" style="color:#1a7f37; font-weight:700;">0.52</td><td class="val">0.23</td></tr>
+          </table>
+        </div>
+      </div>
+      <p class="note" style="margin-top:8px;">&ldquo;sat&rdquo;&rarr;&ldquo;down&rdquo; = 0.44, &ldquo;down&rdquo;&rarr;&ldquo;sat&rdquo; = 0.52 &mdash; learned syntactic relationships. Full batch: <b>3&times;8 = 24 attention matrices</b>. Shape: <b>(3, 8, 4, 4)</b>.</p>
+      <div class="next-step">⤷ <b>Input to Step 7:</b> Attention weights <span class="shape-tag">(3, 8, 4, 4)</span> + V from Step 5 <span class="shape-tag">(3, 8, 4, 64)</span> &mdash; weights tell how much of each V to take</div>
+    </div>
+  </div>
+
+  <!-- STEP 7: WEIGHTED SUM -->
+  <div class="step s-red">
+    <div class="step-header">
+      <div class="step-num">7</div>
+      <div class="step-title">Attention Weights &times; V &rarr; Weighted Sum</div>
+      <div class="step-shape">(3, 8, 4, 4) &times; (3, 8, 4, 64) &rarr; (3, 8, 4, 64)</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:8px;">Each token&rsquo;s new representation = weighted mix of all V vectors. Showing B0, Head 1:</p>
+      <div style="background:#ffffff; border:1px solid #d0d7de; border-radius:8px; padding:14px; font-size:12px; line-height:2; font-family:'Cascadia Code', monospace;">
+        <span style="color:#0969da; font-weight:700;">new_The</span> = <span style="color:#1a7f37;">0.58</span>&middot;V<sub>The</sub> + 0.16&middot;V<sub>cat</sub> + 0.05&middot;V<sub>sat</sub> + 0.08&middot;V<sub>down</sub> <span style="color:#656d76;">&rarr; (64d)</span><br>
+        <span style="color:#1a7f37; font-weight:700;">new_cat</span> = 0.10&middot;V<sub>The</sub> + <span style="color:#1a7f37;">0.41</span>&middot;V<sub>cat</sub> + 0.25&middot;V<sub>sat</sub> + 0.07&middot;V<sub>down</sub> <span style="color:#656d76;">&rarr; (64d)</span><br>
+        <span style="color:#9a6700; font-weight:700;">new_sat</span> = 0.04&middot;V<sub>The</sub> + 0.24&middot;V<sub>cat</sub> + 0.20&middot;V<sub>sat</sub> + <span style="color:#1a7f37;">0.44</span>&middot;V<sub>down</sub> <span style="color:#656d76;">&rarr; (64d)</span><br>
+        <span style="color:#cf222e; font-weight:700;">new_down</span> = 0.04&middot;V<sub>The</sub> + 0.05&middot;V<sub>cat</sub> + <span style="color:#1a7f37;">0.52</span>&middot;V<sub>sat</sub> + 0.23&middot;V<sub>down</sub> <span style="color:#656d76;">&rarr; (64d)</span>
+      </div>
+      <p class="note" style="margin-top:8px;">B1 and B2 compute their own sums in parallel. All 8 heads: <b>(3, 8, 4, 64)</b>.</p>
+      <div class="next-step">⤷ <b>Input to Step 8:</b> 8 per-head outputs <span class="shape-tag">(3, 8, 4, 64)</span> &mdash; each head has its own 64-d context-mixed representation, to be concatenated and projected</div>
+    </div>
+  </div>
+
+  <!-- STEP 8: CONCAT -->
+  <div class="step s-purple">
+    <div class="step-header">
+      <div class="step-num">8</div>
+      <div class="step-title">Concat 8 Heads + W<sup>O</sup></div>
+      <div class="step-shape">(3, 8, 4, 64) &rarr; (3, 4, 512) &rarr; (3, 4, 512)</div>
+    </div>
+    <div class="step-body">
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+        <div style="border:2px solid #0969da; border-radius:6px; padding:3px 6px; font-size:10px;">h&#8321; (4,64)</div>
+        <span style="color:#656d76;">&oplus;</span>
+        <div style="border:2px solid #1a7f37; border-radius:6px; padding:3px 6px; font-size:10px;">h&#8322; (4,64)</div>
+        <span style="color:#656d76;">&oplus; &hellip; &oplus;</span>
+        <div style="border:2px solid #656d76; border-radius:6px; padding:3px 6px; font-size:10px;">h&#8328; (4,64)</div>
+        <span style="color:#d0d7de; font-size:18px;">=</span>
+        <div style="border:2px solid #8250df; border-radius:6px; padding:3px 6px; font-size:10px;">Concat (4,512)</div>
+        <span style="color:#d0d7de; font-size:18px;">&times;</span>
+        <span class="op">W<sup>O</sup>(512,512)</span>
+        <span style="color:#d0d7de; font-size:18px;">=</span>
+        <div style="border:2px solid #9a6700; border-radius:6px; padding:3px 6px; font-size:10px; font-weight:700; color:#9a6700;">Output (4,512)</div>
+      </div>
+      <div class="callout" style="margin-top:8px;">
+        <div class="callout-title">What is W<sup>O</sup> and why is it needed?</div>
+        <p>After concatenation, each token has 512 dims &mdash; but the information is still <b>siloed by head</b>. Dims 0&ndash;63 came from Head 1, dims 64&ndash;127 from Head 2, etc. They never interacted.<br><br>
+        <b>W<sup>O</sup> &isin; &#8477;<sup>512&times;512</sup></b> is the <b>only matrix that allows cross-head communication</b>. It learns to blend features discovered by different heads: Head 1 found &ldquo;cat is the subject,&rdquo; Head 3 found &ldquo;sat is past tense&rdquo; &rarr; W<sup>O</sup> combines them into one unified 512-d representation.<br><br>
+        Without W<sup>O</sup>, multi-head attention would just be 8 independent single-head attentions glued together &mdash; no synergy. <b>W<sup>O</sup> is what makes the &ldquo;multi&rdquo; in multi-head actually useful.</b></p>
+      </div>
+      <p class="note">Output shape: <b>(3, 4, 512)</b> &mdash; same dimensionality as the input X from Step 3, which is essential for the residual connection next.</p>
+      <div class="next-step">⤷ <b>Input to Step 9:</b> Attention output <span class="shape-tag">(3, 4, 512)</span> + original X<sub>input</sub> from Step 3 <span class="shape-tag">(3, 4, 512)</span> &mdash; these two are added together (residual)</div>
+    </div>
+  </div>
+
+  <!-- STEP 9: RESIDUAL -->
+  <div class="step s-blue">
+    <div class="step-header">
+      <div class="step-num">9</div>
+      <div class="step-title">Residual + LayerNorm</div>
+      <div class="step-shape">(3, 4, 512)</div>
+    </div>
+    <div class="step-body">
+      <div class="code-block">output = <span class="fn">LayerNorm</span>(X<sub>input</sub> + <span class="fn">Attention</span>(X)) <span class="cm">// X_input from step 3</span></div>
+      <p class="note">Original input added back (residual). LayerNorm normalizes each 512-d vector. Shape: <b>(3, 4, 512)</b>.</p>
+      <div class="next-step">⤷ <b>Input to Step 10:</b> Normalized residual <span class="shape-tag">(3, 4, 512)</span> &mdash; each token now has context from attention + its original embedding, normalized</div>
+    </div>
+  </div>
+
+  <!-- STEP 10: FFN -->
+  <div class="step s-green">
+    <div class="step-header">
+      <div class="step-num">10</div>
+      <div class="step-title">Feed-Forward Network (per token)</div>
+      <div class="step-shape">(3, 4, 512) &rarr; (3, 4, 2048) &rarr; (3, 4, 512)</div>
+    </div>
+    <div class="step-body">
+      <div class="code-block">
+        FFN(x) = <span class="fn">max</span>(0, x @ W&#8321; + b&#8321;) @ W&#8322; + b&#8322;<br>
+        <span class="cm">// W&#8321;: (512, 2048) &mdash; expand 4&times;</span><br>
+        <span class="cm">// W&#8322;: (2048, 512) &mdash; compress back</span><br>
+        <span class="cm">// Applied independently to each of 3&times;4 = 12 tokens</span>
+      </div>
+      <p class="note" style="margin-top:6px;">ReLU zeros ~half the 2048 neurons. Another residual + LayerNorm. <b>~2.1M params per FFN</b>. Shape: <b>(3, 4, 512)</b>.</p>
+      <div class="next-step">⤷ <b>Input to next layer&rsquo;s Step 4:</b> FFN output after residual + LayerNorm <span class="shape-tag">(3, 4, 512)</span> &mdash; this becomes the new X for the next encoder layer&rsquo;s Q, K, V projection</div>
+    </div>
+  </div>
+
+  <!-- LAYER REPEAT BANNER -->
+  <div class="big-arrow"><span>&circlearrowleft; Repeat Steps 4&ndash;10 for <b>N = 6 encoder layers</b></span></div>
+
+  <!-- REUSE TABLE -->
+  <div class="step s-teal">
+    <div class="step-header">
+      <div class="step-num">!</div>
+      <div class="step-title">What Gets Reused vs. Recreated Each Layer?</div>
+      <div class="step-shape">Critical detail</div>
+    </div>
+    <div class="step-body">
+      <p class="note" style="margin-bottom:10px;">Each of the 6 encoder layers runs steps 4&ndash;10, but they <b>do NOT share weights</b>:</p>
+      <table class="reuse-table">
+        <tr><th>Component</th><th>Reused or New?</th><th>Explanation</th></tr>
+        <tr>
+          <td>W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>, W<sup>O</sup></td>
+          <td class="new">NEW per layer</td>
+          <td>Layer 1 has W<sup>Q</sup><sub>1</sub>, layer 2 has W<sup>Q</sup><sub>2</sub>. <b>6 &times; 4 = 24 attention weight matrices</b> total.</td>
+        </tr>
+        <tr>
+          <td>W&#8321;, b&#8321;, W&#8322;, b&#8322; (FFN)</td>
+          <td class="new">NEW per layer</td>
+          <td>Each layer&rsquo;s FFN has its own weights. <b>6 &times; 2.1M = 12.6M</b> FFN params.</td>
+        </tr>
+        <tr>
+          <td>LayerNorm &gamma;, &beta;</td>
+          <td class="new">NEW per layer</td>
+          <td>12 LayerNorms total (2 per layer &times; 6). Small: 1024 params each.</td>
+        </tr>
+        <tr>
+          <td>Q, K, V tensors</td>
+          <td class="new">RECOMPUTED</td>
+          <td>Activations. Each layer takes the <b>previous output</b> as X, computes fresh Q, K, V.</td>
+        </tr>
+        <tr>
+          <td>Attention scores</td>
+          <td class="new">RECOMPUTED</td>
+          <td>Each layer produces fresh (3, 8, 4, 4) maps. Layer 1: syntax. Layer 6: semantics.</td>
+        </tr>
+        <tr>
+          <td>W<sub>emb</sub></td>
+          <td class="reused">USED ONCE (step 2)</td>
+          <td>Only at the start. Not touched during the 6 layers.</td>
+        </tr>
+        <tr>
+          <td>Positional Encoding</td>
+          <td class="reused">USED ONCE (step 3)</td>
+          <td>Added once before layer 1. Not re-added later (unlike RoPE in modern models).</td>
+        </tr>
+        <tr>
+          <td>Residual stream shape</td>
+          <td class="shared">SAME throughout</td>
+          <td>Every layer: (3, 4, 512) in, (3, 4, 512) out. This makes stacking possible.</td>
+        </tr>
+      </table>
+      <div class="code-block" style="margin-top:12px;">
+        x = <span class="fn">embed</span>(tokens) + PE <span class="cm">// (3, 4, 512) &mdash; done once</span><br><br>
+        <span class="kw">for</span> layer <span class="kw">in</span> [1, 2, 3, 4, 5, 6]:<br>
+        &nbsp;&nbsp;Q = x @ W<sup>Q</sup><sub>layer</sub> <span class="cm">// this layer&rsquo;s weights &mdash; NOT shared</span><br>
+        &nbsp;&nbsp;K = x @ W<sup>K</sup><sub>layer</sub><br>
+        &nbsp;&nbsp;V = x @ W<sup>V</sup><sub>layer</sub><br>
+        &nbsp;&nbsp;attn = <span class="fn">softmax</span>(QK<sup>T</sup>/&radic;64) @ V<br>
+        &nbsp;&nbsp;attn_out = <span class="fn">concat</span>(attn) @ W<sup>O</sup><sub>layer</sub><br>
+        &nbsp;&nbsp;x = <span class="fn">LN</span><sub>layer,1</sub>(x + attn_out) <span class="cm">// residual</span><br>
+        &nbsp;&nbsp;x = <span class="fn">LN</span><sub>layer,2</sub>(x + <span class="fn">FFN</span><sub>layer</sub>(x)) <span class="cm">// residual</span><br><br>
+        <span class="cm">// Encoder output: (3, 4, 512)</span>
+      </div>
+      <div class="callout" style="margin-top:12px;">
+        <div class="callout-title">Why not share weights across layers?</div>
+        <p>Each layer sees a progressively more refined representation. Layer 1 learns basic patterns from raw embeddings. Layer 6 learns abstract relationships from 5 rounds of attention. Sharing would force identical transformations &mdash; <b>the paper tested it and performance dropped</b>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 11: DECODER -->
+  <div class="step s-red">
+    <div class="step-header">
+      <div class="step-num">11</div>
+      <div class="step-title">Decoder &mdash; Three Sub-layers per Layer</div>
+      <div class="step-shape">(3, T, 512)</div>
+    </div>
+    <div class="step-body">
+      <table class="reuse-table">
+        <tr><th>Sub-layer</th><th>Q from</th><th>K, V from</th><th>Mask</th></tr>
+        <tr>
+          <td><span class="section-label label-dec" style="margin:0;">Masked Self-Attention</span></td>
+          <td>Decoder tokens</td><td>Decoder tokens</td><td>Causal: can&rsquo;t see future</td>
+        </tr>
+        <tr>
+          <td><span class="section-label label-cross" style="margin:0;">Cross-Attention</span></td>
+          <td>Decoder tokens</td><td><b>Encoder output</b></td><td>No mask &mdash; full access</td>
+        </tr>
+        <tr>
+          <td><span class="section-label label-enc" style="margin:0;">FFN</span></td>
+          <td colspan="3">Same as encoder: 512&rarr;2048&rarr;512 per token</td>
+        </tr>
+      </table>
+      <p class="note" style="margin-top:8px;">Cross-attention score shape: <b>(3, 8, T, 4)</b> &mdash; each decoder token attends to all 4 source tokens.</p>
+    </div>
+  </div>
+
+  <!-- STEP 12: OUTPUT -->
+  <div class="step s-purple">
+    <div class="step-header">
+      <div class="step-num">12</div>
+      <div class="step-title">Linear + Softmax &rarr; Next Token</div>
+      <div class="step-shape">(3, T, 512) &rarr; (3, T, 37000)</div>
+    </div>
+    <div class="step-body">
+      <table class="matrix">
+        <tr><th>Batch</th><th>Position</th><th>Top Prediction</th><th>Prob</th><th>2nd</th></tr>
+        <tr><td class="row-label" style="color:#0969da;">B0</td><td class="val">&lt;BOS&gt;&rarr;?</td><td class="val" style="color:#1a7f37; font-weight:700;">Die</td><td class="val" style="color:#1a7f37;">0.89</td><td class="val">Das</td></tr>
+        <tr><td class="row-label" style="color:#0969da;">B0</td><td class="val">Die&rarr;?</td><td class="val" style="color:#1a7f37; font-weight:700;">Katze</td><td class="val" style="color:#1a7f37;">0.82</td><td class="val">Kater</td></tr>
+        <tr><td class="row-label" style="color:#1a7f37;">B1</td><td class="val">&lt;BOS&gt;&rarr;?</td><td class="val" style="color:#1a7f37; font-weight:700;">Ein</td><td class="val" style="color:#1a7f37;">0.91</td><td class="val">Der</td></tr>
+        <tr><td class="row-label" style="color:#9a6700;">B2</td><td class="val">&lt;BOS&gt;&rarr;?</td><td class="val" style="color:#1a7f37; font-weight:700;">Sie</td><td class="val" style="color:#1a7f37;">0.94</td><td class="val">Er</td></tr>
+      </table>
+      <p class="note" style="margin-top:8px;">All 3 translations generated <b>simultaneously</b>. Each output is a distribution over 37,000 tokens.</p>
+    </div>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <div style="background:#f6f8fa; border:2px solid #0969da30; border-radius:12px; padding:20px; margin-top:8px;">
+    <h2 style="font-size:16px; color:#0969da; margin-bottom:12px;">Complete Shape Journey &mdash; Batch=3, Seq=4</h2>
+    <table class="matrix" style="width:100%;">
+      <tr><th>#</th><th>Operation</th><th>Shape</th><th>Key Detail</th></tr>
+      <tr><td class="val">1</td><td class="val">Tokenize</td><td class="val" style="color:#0969da;">(3, 4)</td><td class="val" style="color:#656d76;">3 sentences &times; 4 IDs</td></tr>
+      <tr><td class="val">2</td><td class="val">Embed &times; &radic;512</td><td class="val" style="color:#0969da;">(3, 4, 512)</td><td class="val" style="color:#656d76;">W<sub>emb</sub> used once</td></tr>
+      <tr><td class="val">3</td><td class="val">+ PE (sin/cos)</td><td class="val" style="color:#1a7f37;">(3, 4, 512)</td><td class="val" style="color:#656d76;">Computed, not learned. Added once</td></tr>
+      <tr><td class="val">4</td><td class="val">Q, K, V projection</td><td class="val" style="color:#9a6700;">3 &times; (3, 4, 512)</td><td class="val" style="color:#cf222e;">W<sup>Q/K/V</sup> NEW per layer</td></tr>
+      <tr><td class="val">5</td><td class="val">Reshape 8 heads</td><td class="val" style="color:#9a6700;">3 &times; (3, 8, 4, 64)</td><td class="val" style="color:#656d76;">Free reshape, 512/8=64</td></tr>
+      <tr><td class="val">6</td><td class="val">QK<sup>T</sup>/&radic;64 + softmax</td><td class="val" style="color:#cf222e;">(3, 8, 4, 4)</td><td class="val" style="color:#656d76;">24 attention maps</td></tr>
+      <tr><td class="val">7</td><td class="val">&times; V</td><td class="val" style="color:#cf222e;">(3, 8, 4, 64)</td><td class="val" style="color:#656d76;">Weighted sum per token</td></tr>
+      <tr><td class="val">8</td><td class="val">Concat + W<sup>O</sup></td><td class="val" style="color:#8250df;">(3, 4, 512)</td><td class="val" style="color:#cf222e;">W<sup>O</sup> NEW per layer</td></tr>
+      <tr><td class="val">9</td><td class="val">Add &amp; LayerNorm</td><td class="val" style="color:#0969da;">(3, 4, 512)</td><td class="val" style="color:#656d76;">Residual connection</td></tr>
+      <tr><td class="val">10</td><td class="val">FFN 512&rarr;2048&rarr;512</td><td class="val" style="color:#1a7f37;">(3, 4, 512)</td><td class="val" style="color:#cf222e;">W&#8321;, W&#8322; NEW per layer</td></tr>
+      <tr><td class="val">&hellip;</td><td class="val">&times; 6 layers</td><td class="val" style="color:#0969da;">(3, 4, 512)</td><td class="val" style="color:#cf222e;">New weights, new Q/K/V each layer</td></tr>
+      <tr><td class="val">11</td><td class="val">Decoder (6 &times; 3 sub-layers)</td><td class="val" style="color:#cf222e;">(3, T, 512)</td><td class="val" style="color:#656d76;">Cross-attn: (3,8,T,4)</td></tr>
+      <tr><td class="val">12</td><td class="val">Linear + Softmax</td><td class="val" style="color:#8250df;">(3, T, 37000)</td><td class="val" style="color:#656d76;">3 translations in parallel</td></tr>
+    </table>
+  </div>
+
+  <p style="text-align:center; margin-top:20px; font-size:11px; color:#656d76;">
+    Numerical values are illustrative. PE values are exact. Dimensions and shapes are exact.
+  </p>
+</div>
+</body>
+</html>

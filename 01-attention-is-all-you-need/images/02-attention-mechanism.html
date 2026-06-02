@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Attention Mechanism Detail</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+  .container { max-width: 1100px; width: 100%; }
+  h1 { text-align: center; font-size: 24px; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin-bottom: 32px; }
+  .two-col { display: flex; gap: 48px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .panel { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 24px; flex: 1; min-width: 420px; max-width: 500px; }
+  .panel h2 { font-size: 16px; margin-bottom: 16px; }
+  .sdpa-label { color: #0969da; }
+  .mha-label { color: #8250df; }
+  .formula { background: #ffffff; border: 1px solid #d0d7de; border-radius: 8px; padding: 14px 18px; font-family: 'Cascadia Code', monospace; font-size: 14px; margin-bottom: 16px; text-align: center; line-height: 1.8; }
+  .formula em { color: #0969da; font-style: normal; }
+  .formula .hl { color: #cf222e; }
+  .step-list { list-style: none; counter-reset: step; }
+  .step-list li { counter-increment: step; position: relative; padding: 10px 0 10px 40px; border-left: 2px solid #d0d7de; margin-left: 12px; font-size: 13px; line-height: 1.5; }
+  .step-list li::before { content: counter(step); position: absolute; left: -13px; top: 8px; width: 24px; height: 24px; background: #0969da; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+  .step-list li:last-child { border-left-color: transparent; }
+  .shape { font-family: 'Cascadia Code', monospace; font-size: 11px; color: #656d76; background: #ffffff; padding: 2px 6px; border-radius: 4px; border: 1px solid #d0d7de; }
+  .heads-grid { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+  .head-box { width: 50px; height: 40px; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
+  .concat-arrow { text-align: center; font-size: 24px; color: #656d76; margin: 8px 0; }
+  .wo-box { background: #f0f2f5; border: 1px solid #d0d7de; border-radius: 8px; padding: 10px; text-align: center; font-size: 13px; }
+  .note { font-size: 11px; color: #656d76; margin-top: 12px; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+  th { background: #f6f8fa; border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; color: #656d76; font-weight: 600; }
+  td { border: 1px solid #d0d7de; padding: 8px 12px; }
+  .complexity { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 24px; margin-top: 32px; }
+  .complexity h2 { font-size: 16px; margin-bottom: 12px; color: #9a6700; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Attention Mechanism — Step by Step</h1>
+  <p class="sub">How information flows through Scaled Dot-Product and Multi-Head Attention</p>
+
+  <div class="two-col">
+    <!-- SCALED DOT-PRODUCT ATTENTION -->
+    <div class="panel">
+      <h2 class="sdpa-label">Scaled Dot-Product Attention</h2>
+
+      <div class="formula">
+        <em>Attention</em>(Q, K, V) = <em>softmax</em>(<em>Q</em><em>K</em><sup>T</sup> / <span class="hl">√d<sub>k</sub></span>) <em>V</em>
+      </div>
+
+      <ol class="step-list">
+        <li>
+          <strong>Input Q, K, V matrices</strong><br>
+          Q: <span class="shape">(B, 8, S, 64)</span> — what each token is looking for<br>
+          K: <span class="shape">(B, 8, S, 64)</span> — what each token advertises<br>
+          V: <span class="shape">(B, 8, S, 64)</span> — what each token provides
+        </li>
+        <li>
+          <strong>Compute QK<sup>T</sup></strong><br>
+          Matrix multiply Q × K<sup>T</sup><br>
+          <span class="shape">(B, 8, S, 64) × (B, 8, 64, S) → (B, 8, S, S)</span><br>
+          Result: pairwise similarity scores between all tokens
+        </li>
+        <li>
+          <strong>Scale by √d<sub>k</sub> = √64 = 8</strong><br>
+          Divide every score by 8<br>
+          <span class="shape">(B, 8, S, S)</span> — prevents softmax saturation
+        </li>
+        <li>
+          <strong>Apply mask (optional)</strong><br>
+          For decoder self-attention: set future positions to -∞<br>
+          For encoder self-attention: no mask needed
+        </li>
+        <li>
+          <strong>Softmax along last dimension</strong><br>
+          Each row becomes a probability distribution<br>
+          <span class="shape">(B, 8, S, S)</span> — rows sum to 1.0
+        </li>
+        <li>
+          <strong>Multiply by V</strong><br>
+          <span class="shape">(B, 8, S, S) × (B, 8, S, 64) → (B, 8, S, 64)</span><br>
+          Result: weighted sum of values for each token
+        </li>
+      </ol>
+
+      <p class="note">
+        <strong>Why scale by √d<sub>k</sub>?</strong> When d<sub>k</sub> = 64, dot products have variance ≈ 64. 
+        Values like 50 or -50 push softmax into regions where gradients ≈ 0. 
+        Dividing by 8 brings variance to ≈ 1, keeping gradients healthy.
+      </p>
+    </div>
+
+    <!-- MULTI-HEAD ATTENTION -->
+    <div class="panel">
+      <h2 class="mha-label">Multi-Head Attention</h2>
+
+      <div class="formula">
+        <em>MultiHead</em>(Q, K, V) = <em>Concat</em>(head<sub>1</sub>, …, head<sub>h</sub>) <em>W<sup>O</sup></em><br>
+        head<sub>i</sub> = <em>Attention</em>(Q<em>W<sub>i</sub><sup>Q</sup></em>, K<em>W<sub>i</sub><sup>K</sup></em>, V<em>W<sub>i</sub><sup>V</sup></em>)
+      </div>
+
+      <ol class="step-list">
+        <li>
+          <strong>Start with input X</strong><br>
+          <span class="shape">(B, S, 512)</span> — one vector per token
+        </li>
+        <li>
+          <strong>Project Q, K, V with separate learned weights</strong><br>
+          W<sub>i</sub><sup>Q</sup>, W<sub>i</sub><sup>K</sup>, W<sub>i</sub><sup>V</sup> ∈ <span class="shape">ℝ<sup>512×64</sup></span> per head<br>
+          Total: <span class="shape">(B, S, 512) → 3 × (B, 8, S, 64)</span>
+        </li>
+        <li>
+          <strong>Run 8 attention heads in parallel</strong>
+          <div class="heads-grid">
+            <div class="head-box" style="background:#0969da">h₁<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#3fb950">h₂<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#d29922">h₃<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#cf222e">h₄<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#bc8cff">h₅<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#f778ba">h₆<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#79c0ff">h₇<br><span style="font-size:8px">64d</span></div>
+            <div class="head-box" style="background:#56d364">h₈<br><span style="font-size:8px">64d</span></div>
+          </div>
+          Each head: <span class="shape">(B, S, 64)</span> output
+        </li>
+        <li>
+          <strong>Concatenate all heads</strong>
+          <div class="concat-arrow">⊕</div>
+          <span class="shape">8 × (B, S, 64) → (B, S, 512)</span>
+        </li>
+        <li>
+          <strong>Final projection W<sup>O</sup></strong>
+          <div class="wo-box">
+            W<sup>O</sup> ∈ <span class="shape">ℝ<sup>512×512</sup></span><br>
+            <span class="shape">(B, S, 512) → (B, S, 512)</span>
+          </div>
+        </li>
+      </ol>
+
+      <p class="note">
+        <strong>Same cost as single-head.</strong> 8 heads × 64 dims = 512. 
+        One big head at 512d would have the same FLOPs. 
+        But 8 heads learn 8 different relationship patterns — syntax, semantics, position, etc.
+      </p>
+    </div>
+  </div>
+
+  <!-- THREE TYPES -->
+  <div class="complexity">
+    <h2>Three Uses of Attention in the Transformer</h2>
+    <table>
+      <tr>
+        <th>Type</th>
+        <th>Q comes from</th>
+        <th>K, V come from</th>
+        <th>Score shape</th>
+        <th>Mask?</th>
+        <th>Purpose</th>
+      </tr>
+      <tr>
+        <td style="color:#0969da">Encoder Self-Attention</td>
+        <td>Encoder layer</td>
+        <td>Same encoder layer</td>
+        <td><span class="shape">(B, 8, S, S)</span></td>
+        <td>No</td>
+        <td>Each input token attends to all input tokens</td>
+      </tr>
+      <tr>
+        <td style="color:#cf222e">Masked Decoder Self-Attention</td>
+        <td>Decoder layer</td>
+        <td>Same decoder layer</td>
+        <td><span class="shape">(B, 8, T, T)</span></td>
+        <td>Yes — causal</td>
+        <td>Each output token attends to previous outputs only</td>
+      </tr>
+      <tr>
+        <td style="color:#9a6700">Cross-Attention</td>
+        <td>Decoder layer</td>
+        <td>Encoder output</td>
+        <td><span class="shape">(B, 8, T, S)</span></td>
+        <td>No</td>
+        <td>Decoder looks at the entire encoded input</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- COMPLEXITY COMPARISON -->
+  <div class="complexity" style="margin-top:16px;">
+    <h2>Complexity Comparison</h2>
+    <table>
+      <tr>
+        <th>Layer Type</th>
+        <th>Complexity per Layer</th>
+        <th>Sequential Operations</th>
+        <th>Max Path Length</th>
+      </tr>
+      <tr>
+        <td style="color:#0969da">Self-Attention</td>
+        <td>O(S² · d)</td>
+        <td>O(1)</td>
+        <td>O(1)</td>
+      </tr>
+      <tr>
+        <td style="color:#cf222e">Recurrent (RNN)</td>
+        <td>O(S · d²)</td>
+        <td>O(S)</td>
+        <td>O(S)</td>
+      </tr>
+      <tr>
+        <td style="color:#9a6700">Convolutional</td>
+        <td>O(k · S · d²)</td>
+        <td>O(1)</td>
+        <td>O(log<sub>k</sub>(S))</td>
+      </tr>
+    </table>
+    <p class="note" style="margin-top:12px">
+      S = sequence length · d = model dimension · k = kernel size. 
+      Self-attention wins on sequential ops and path length. 
+      The S² cost is why long sequences need FlashAttention.
+    </p>
+  </div>
+</div>
+</body>
+</html>

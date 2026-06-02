@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Positional Encoding</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+  .container { max-width: 900px; width: 100%; }
+  h1 { text-align: center; font-size: 24px; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin-bottom: 24px; }
+  .formula-box { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: center; }
+  .formula-box .formula { font-family: 'Cascadia Code', monospace; font-size: 15px; line-height: 2; }
+  .formula-box .formula em { color: #0969da; font-style: normal; }
+  .formula-box .formula .hl { color: #cf222e; }
+  canvas { display: block; margin: 0 auto 24px; border-radius: 8px; border: 1px solid #d0d7de; }
+  .explain { display: flex; gap: 24px; margin-top: 24px; flex-wrap: wrap; }
+  .card { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 10px; padding: 18px; flex: 1; min-width: 250px; }
+  .card h3 { font-size: 14px; margin-bottom: 8px; }
+  .card p { font-size: 12px; color: #656d76; line-height: 1.6; }
+  .card .q { color: #0969da; }
+  .card .a { color: #1a7f37; }
+  .dim-label { font-size: 11px; color: #656d76; text-align: center; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Positional Encoding</h1>
+  <p class="sub">How the Transformer knows word order without recurrence</p>
+
+  <div class="formula-box">
+    <div class="formula">
+      <em>PE</em><sub>(<em>pos</em>, 2<em>i</em>)</sub> = sin(<em>pos</em> / <span class="hl">10000</span><sup>2<em>i</em>/<em>d<sub>model</sub></em></sup>)<br>
+      <em>PE</em><sub>(<em>pos</em>, 2<em>i</em>+1)</sub> = cos(<em>pos</em> / <span class="hl">10000</span><sup>2<em>i</em>/<em>d<sub>model</sub></em></sup>)
+    </div>
+    <p style="font-size:11px; color:#656d76; margin-top:10px;">
+      pos = position in sequence (0 to S-1) · i = dimension index (0 to d_model/2 - 1) · d_model = 512
+    </p>
+  </div>
+
+  <canvas id="heatmap" width="800" height="320"></canvas>
+  <div class="dim-label">← Dimension index (0 to 511) →</div>
+  <p style="text-align:center; font-size:11px; color:#656d76; margin-top:2px; margin-bottom:8px;">↑ Position in sequence (0 to 63) ↓</p>
+
+  <div class="explain">
+    <div class="card">
+      <h3 style="color:#cf222e;">Why Not Learned Embeddings?</h3>
+      <p>
+        The paper tested both. Results were nearly identical (Table 3, row E). 
+        They chose sinusoidal because it can <strong>extrapolate to longer sequences</strong> 
+        than seen during training. Learned embeddings are fixed to the max training length.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:#0969da;">Why Sinusoids Work</h3>
+      <p>
+        Each dimension is a sinusoid with a different frequency. Low dimensions 
+        oscillate fast (short wavelength), high dimensions oscillate slowly. 
+        Together they create a <strong>unique fingerprint</strong> for each position. 
+        For any fixed offset k, PE<sub>pos+k</sub> is a linear function of PE<sub>pos</sub> — 
+        so the model can learn <strong>relative position</strong> attention.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:#1a7f37;">How It's Used</h3>
+      <p>
+        Positional encodings are <strong>added</strong> (not concatenated) to the token embeddings. 
+        Both have dimension d_model = 512. The sum goes through dropout before entering 
+        the first encoder/decoder layer. This is done once — not at every layer.
+      </p>
+    </div>
+  </div>
+
+  <div class="explain" style="margin-top:16px;">
+    <div class="card" style="flex:2;">
+      <h3 style="color:#9a6700;">Interview Question</h3>
+      <p>
+        <span class="q">Q: Why add instead of concatenate positional encodings?</span><br>
+        <span class="a">A: Concatenation would increase d_model (512 → 1024), doubling compute in every attention and FFN layer. 
+        Addition keeps d_model at 512. The model learns to use the combined signal — empirically it works just as well.</span>
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:#8250df;">Modern Alternatives</h3>
+      <p>
+        <strong>RoPE</strong> (Rotary Position Embedding) — used in LLaMA, Mistral. Encodes position by rotating Q and K vectors.<br>
+        <strong>ALiBi</strong> — adds a linear bias to attention scores based on distance. No extra parameters.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('heatmap');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const maxPos = 64, dModel = 512;
+const cellW = W / dModel, cellH = H / maxPos;
+
+for (let pos = 0; pos < maxPos; pos++) {
+  for (let i = 0; i < dModel; i++) {
+    const dimIdx = Math.floor(i / 2);
+    const angle = pos / Math.pow(10000, (2 * dimIdx) / dModel);
+    const val = i % 2 === 0 ? Math.sin(angle) : Math.cos(angle);
+    // Map [-1, 1] to color
+    const norm = (val + 1) / 2; // 0 to 1
+    const r = Math.round(norm < 0.5 ? 0 : (norm - 0.5) * 2 * 255);
+    const g = Math.round(norm < 0.5 ? norm * 2 * 150 : 150 - (norm - 0.5) * 2 * 100);
+    const b = Math.round(norm < 0.5 ? 200 - norm * 2 * 200 : 0);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(i * cellW, pos * cellH, cellW + 0.5, cellH + 0.5);
+  }
+}
+
+// Axis labels
+ctx.fillStyle = '#656d76';
+ctx.font = '10px monospace';
+for (let p = 0; p < maxPos; p += 8) {
+  ctx.fillText(p.toString(), 2, p * cellH + cellH - 1);
+}
+</script>
+</body>
+</html>

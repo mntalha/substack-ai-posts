@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+  .container { max-width: 1100px; width: 100%; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 8px; color: #1f2328; }
+  .subtitle { text-align: center; font-size: 14px; color: #656d76; margin-bottom: 24px; }
+  .params { display: flex; justify-content: center; gap: 12px; margin-bottom: 32px; flex-wrap: wrap; }
+  .param { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 20px; padding: 6px 16px; font-size: 13px; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+  .param span { color: #0969da; }
+  .arch { display: flex; justify-content: center; gap: 80px; align-items: flex-start; }
+  .column { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .col-label { font-size: 20px; font-weight: 700; margin-bottom: 16px; letter-spacing: 1px; }
+  .encoder-label { color: #0969da; }
+  .decoder-label { color: #cf222e; }
+  .block { position: relative; width: 320px; display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .layer-box { width: 280px; border-radius: 10px; padding: 14px 16px; text-align: center; font-size: 13px; font-weight: 600; position: relative; }
+  .shape-tag { font-size: 10px; font-family: 'Cascadia Code', monospace; color: #656d76; background: #ffffff; border: 1px solid #d0d7de; border-radius: 4px; padding: 2px 6px; position: absolute; right: -8px; top: 50%; transform: translate(100%, -50%); white-space: nowrap; }
+  .shape-tag-left { right: auto; left: -8px; transform: translate(-100%, -50%); }
+  .attn { background: #ddf4ff; border: 1px solid #0969da40; color: #0969da; }
+  .masked-attn { background: #ffebe9; border: 1px solid #cf222e40; color: #cf222e; }
+  .cross-attn { background: #fff8c5; border: 1px solid #d29922; color: #9a6700; }
+  .ffn { background: #dafbe1; border: 1px solid #1a7f3740; color: #1a7f37; }
+  .addnorm { background: #f6f8fa; border: 1px solid #d0d7de; color: #656d76; font-size: 11px; padding: 6px 16px; width: 280px; border-radius: 6px; text-align: center; }
+  .embed { background: #f0f2f5; border: 1px solid #d0d7de; color: #1f2328; width: 280px; border-radius: 10px; padding: 12px 16px; text-align: center; font-size: 13px; }
+  .output-box { background: #ddf4ff; border: 1px solid #0969da40; color: #0969da; width: 280px; border-radius: 10px; padding: 12px 16px; text-align: center; font-size: 13px; }
+  .arrow { display: flex; justify-content: center; padding: 4px 0; }
+  .arrow svg { width: 20px; height: 20px; }
+  .arrow svg path { fill: #656d76; }
+  .n-badge { position: absolute; top: -12px; right: -12px; background: #0969da; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; z-index: 10; }
+  .n-badge-dec { background: #cf222e; }
+  .repeat-bracket { border: 2px dashed #d0d7de; border-radius: 14px; padding: 16px 12px; margin: 8px 0; position: relative; }
+  .repeat-label { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #ffffff; padding: 0 8px; font-size: 11px; color: #656d76; }
+  .heads-row { display: flex; gap: 3px; justify-content: center; margin-top: 6px; }
+  .head-pill { width: 24px; height: 16px; border-radius: 4px; font-size: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+  .cross-bridge { position: absolute; }
+  .legend { display: flex; gap: 24px; justify-content: center; margin-top: 32px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #656d76; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+  .input-label { font-size: 12px; color: #656d76; margin-bottom: 4px; font-family: 'Cascadia Code', monospace; }
+  .mask-mini { display: grid; grid-template-columns: repeat(4,10px); gap: 1px; margin-top: 4px; justify-content: center; }
+  .mask-cell { width: 10px; height: 10px; border-radius: 2px; }
+  .mask-on { background: #cf222e; opacity: 0.7; }
+  .mask-off { background: #f6f8fa; border: 1px solid #d0d7de; }
+  .middle-connector { display: flex; align-items: center; justify-content: center; position: relative; margin: 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>The Transformer Architecture</h1>
+  <p class="subtitle">Vaswani et al., 2017 — "Attention Is All You Need"</p>
+
+  <div class="params">
+    <div class="param"><span>d_model</span> = 512</div>
+    <div class="param"><span>N</span> = 6 layers</div>
+    <div class="param"><span>h</span> = 8 heads</div>
+    <div class="param"><span>d_k = d_v</span> = 64</div>
+    <div class="param"><span>d_ff</span> = 2048</div>
+    <div class="param"><span>vocab</span> ≈ 37,000</div>
+    <div class="param"><span>params</span> ≈ 65M</div>
+  </div>
+
+  <div class="arch">
+    <!-- ENCODER -->
+    <div class="column">
+      <div class="col-label encoder-label">ENCODER</div>
+
+      <div class="input-label">Input Tokens → (B, S)</div>
+      <div class="embed">
+        Token Embedding + Positional Encoding
+        <span class="shape-tag">(B, S, 512)</span>
+      </div>
+
+      <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+      <div class="repeat-bracket">
+        <div class="repeat-label">× N = 6</div>
+
+        <div class="layer-box attn">
+          Multi-Head Self-Attention
+          <div class="heads-row">
+            <div class="head-pill" style="background:#0969da">h1</div>
+            <div class="head-pill" style="background:#3fb950">h2</div>
+            <div class="head-pill" style="background:#d29922">h3</div>
+            <div class="head-pill" style="background:#cf222e">h4</div>
+            <div class="head-pill" style="background:#bc8cff">h5</div>
+            <div class="head-pill" style="background:#f778ba">h6</div>
+            <div class="head-pill" style="background:#79c0ff">h7</div>
+            <div class="head-pill" style="background:#56d364">h8</div>
+          </div>
+          <span class="shape-tag">Q,K,V: (B, 8, S, 64)<br>Scores: (B, 8, S, S)</span>
+        </div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+        <div class="addnorm">Add & LayerNorm → (B, S, 512)</div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+        <div class="layer-box ffn">
+          Feed-Forward Network
+          <div style="font-size:10px; margin-top:4px; color:#1a7f37aa">512 → 2048 → 512 (ReLU)</div>
+          <span class="shape-tag">(B, S, 2048) → (B, S, 512)</span>
+        </div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+        <div class="addnorm">Add & LayerNorm → (B, S, 512)</div>
+      </div>
+
+      <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+      <div class="output-box" id="encoder-output">
+        Encoder Output
+        <span class="shape-tag">(B, S, 512)</span>
+      </div>
+    </div>
+
+    <!-- DECODER -->
+    <div class="column">
+      <div class="col-label decoder-label">DECODER</div>
+
+      <div class="input-label">Output Tokens (shifted right) → (B, T)</div>
+      <div class="embed">
+        Token Embedding + Positional Encoding
+        <span class="shape-tag">(B, T, 512)</span>
+      </div>
+
+      <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+      <div class="repeat-bracket">
+        <div class="repeat-label">× N = 6</div>
+
+        <div class="layer-box masked-attn">
+          Masked Multi-Head Self-Attention
+          <div style="font-size:10px; margin-top:4px; color:#cf222e80">Causal mask: future tokens = -∞</div>
+          <div class="mask-mini">
+            <div class="mask-cell mask-on"></div><div class="mask-cell mask-off"></div><div class="mask-cell mask-off"></div><div class="mask-cell mask-off"></div>
+            <div class="mask-cell mask-on"></div><div class="mask-cell mask-on"></div><div class="mask-cell mask-off"></div><div class="mask-cell mask-off"></div>
+            <div class="mask-cell mask-on"></div><div class="mask-cell mask-on"></div><div class="mask-cell mask-on"></div><div class="mask-cell mask-off"></div>
+            <div class="mask-cell mask-on"></div><div class="mask-cell mask-on"></div><div class="mask-cell mask-on"></div><div class="mask-cell mask-on"></div>
+          </div>
+          <span class="shape-tag">Scores: (B, 8, T, T)</span>
+        </div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+        <div class="addnorm">Add & LayerNorm → (B, T, 512)</div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+        <div class="layer-box cross-attn">
+          Multi-Head Cross-Attention
+          <div style="font-size:10px; margin-top:4px; color:#9a670080">Q: decoder · K,V: encoder output</div>
+          <span class="shape-tag">Q: (B, 8, T, 64)<br>K,V: (B, 8, S, 64)<br>Scores: (B, 8, T, S)</span>
+        </div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+        <div class="addnorm">Add & LayerNorm → (B, T, 512)</div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+        <div class="layer-box ffn">
+          Feed-Forward Network
+          <div style="font-size:10px; margin-top:4px; color:#1a7f37aa">512 → 2048 → 512 (ReLU)</div>
+          <span class="shape-tag">(B, T, 2048) → (B, T, 512)</span>
+        </div>
+
+        <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+        <div class="addnorm">Add & LayerNorm → (B, T, 512)</div>
+      </div>
+
+      <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+      <div class="layer-box" style="background:#f0f2f5; border-color:#d0d7de; color:#1f2328; width:280px;">
+        Linear → Softmax
+        <span class="shape-tag">(B, T, vocab) → probs</span>
+      </div>
+
+      <div class="arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 14 L6 10 L10 16 L14 10 L10 14"/></svg></div>
+
+      <div class="output-box" style="background:#dafbe1; border-color:#1a7f3740; color:#1a7f37;">
+        Output Probabilities
+        <span class="shape-tag">(B, T, 37000)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cross-attention bridge -->
+  <svg style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:visible;" id="bridge-svg"></svg>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#0969da40; border:1px solid #388bfd;"></div>Self-Attention</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffebe9; border:1px solid #f85149;"></div>Masked Self-Attention</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fff8c5; border:1px solid #d29922;"></div>Cross-Attention</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#dafbe1; border:1px solid #3fb950;"></div>Feed-Forward Network</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f6f8fa; border:1px solid #d0d7de;"></div>Add & LayerNorm</div>
+  </div>
+
+  <p style="text-align:center; margin-top:24px; font-size:11px; color:#656d76;">
+    B = batch size · S = source sequence length · T = target sequence length · All shapes assume base model config
+  </p>
+</div>
+</body>
+</html>

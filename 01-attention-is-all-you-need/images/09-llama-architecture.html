@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Original Transformer → Modern LLaMA: What Changed</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 36px 20px; }
+  .page { max-width: 1160px; width: 100%; }
+  h1 { text-align: center; font-size: 24px; margin-bottom: 4px; }
+  .sub { text-align: center; font-size: 12px; color: #656d76; margin-bottom: 28px; }
+
+  /* ---- DUAL COLUMN ---- */
+  .dual { display: flex; gap: 24px; align-items: stretch; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .col-header { text-align: center; padding: 12px; border-radius: 10px 10px 0 0; font-size: 16px; font-weight: 800; }
+  .col-header small { display: block; font-size: 10px; font-weight: 400; color: #656d76; margin-top: 2px; }
+  .hdr-old { background: linear-gradient(135deg, #fff8c5, #f6f8fa); border: 2px solid #d2992240; color: #9a6700; }
+  .hdr-new { background: linear-gradient(135deg, #ddf4ff, #f6f8fa); border: 2px solid #0969da40; color: #0969da; }
+
+  .flow { border-radius: 0 0 10px 10px; flex: 1; }
+  .flow-old { border: 2px solid #d2992240; border-top: none; }
+  .flow-new { border: 2px solid #0969da40; border-top: none; }
+
+  /* ---- BLOCKS ---- */
+  .blk { border-bottom: 1px solid #d0d7de; padding: 10px 14px; }
+  .blk-label { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+  .blk-desc { font-size: 10px; color: #656d76; line-height: 1.5; }
+  .blk-desc b { color: #1f2328; }
+
+  .b-attn { background: #ddf4ff40; }
+  .b-norm { background: #f6f8fa40; }
+  .b-ffn { background: #dafbe140; }
+  .b-pos { background: #271f3d40; }
+  .b-out { background: #271f3d40; }
+  .b-embed { background: #f6f8fa80; }
+  .b-cross { background: #fff8c540; }
+
+  .arrow { text-align: center; padding: 2px 0; font-size: 14px; color: #d0d7de; }
+  .badge { display: inline-block; font-family: 'Cascadia Code', monospace; font-size: 9px; padding: 1px 6px; border-radius: 3px; margin: 1px 2px; }
+  .bg-blue { background: #ddf4ff; color: #0969da; border: 1px solid #388bfd30; }
+  .bg-green { background: #dafbe1; color: #1a7f37; border: 1px solid #3fb95030; }
+  .bg-orange { background: #fff8c5; color: #9a6700; border: 1px solid #d2992230; }
+  .bg-red { background: #ffebe9; color: #cf222e; border: 1px solid #f8514930; }
+  .bg-purple { background: #271f3d; color: #8250df; border: 1px solid #8957e530; }
+  .bg-kept { background: #f0f2f5; color: #656d76; border: 1px solid #d0d7de; }
+
+  /* change marker */
+  .chg { display: inline-block; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .chg-removed { background: #f8514930; color: #cf222e; }
+  .chg-new { background: #238636; color: #fff; }
+  .chg-kept { background: #d0d7de; color: #656d76; }
+  .chg-changed { background: #d2992240; color: #9a6700; }
+
+  /* comparison table */
+  .cmp-table { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 11px; }
+  .cmp-table th { padding: 8px 10px; text-align: left; border-bottom: 2px solid #d0d7de; color: #656d76; font-weight: 600; }
+  .cmp-table td { padding: 6px 10px; border-bottom: 1px solid #d0d7de; }
+  .cmp-table .comp { color: #1f2328; font-weight: 600; }
+  .cmp-table .old { color: #9a6700; }
+  .cmp-table .new { color: #0969da; }
+  .cmp-table .why { color: #656d76; font-size: 10px; }
+  .mono { font-family: 'Cascadia Code', monospace; }
+
+  .sect { margin-top: 24px; }
+  .sect h2 { font-size: 16px; color: #0969da; margin-bottom: 10px; text-align: center; }
+
+  .formula { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 10px 14px; font-family: 'Cascadia Code', monospace; font-size: 12px; margin: 8px 0; line-height: 1.8; }
+  .formula .label { color: #656d76; font-size: 10px; display: block; margin-bottom: 4px; }
+
+  .note { text-align: center; font-size: 10px; color: #656d76; margin-top: 16px; }
+
+  /* LLaMA config chips */
+  .config { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 12px 0; }
+  .chip { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 3px 9px; font-size: 9px; font-family: 'Cascadia Code', monospace; }
+  .chip b { color: #0969da; }
+
+  .highlight-box { background: #f6f8fa; border: 2px solid #388bfd30; border-radius: 10px; padding: 16px; margin-top: 20px; }
+  .highlight-box h3 { font-size: 14px; color: #0969da; margin-bottom: 8px; }
+  .highlight-box p { font-size: 11px; color: #656d76; line-height: 1.6; }
+  .highlight-box p b { color: #1f2328; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Transformer (2017) → LLaMA (2023–2025)</h1>
+  <p class="sub">Every change from the original paper to the modern decoder-only architecture — and why</p>
+
+  <!-- ======= DUAL COLUMN: OLD vs NEW ======= -->
+  <div class="dual">
+
+    <!-- OLD: ORIGINAL TRANSFORMER -->
+    <div class="col">
+      <div class="col-header hdr-old">
+        Original Transformer (2017)
+        <small>Encoder-Decoder · 65M params · Translation</small>
+      </div>
+      <div class="flow flow-old">
+
+        <div class="blk b-embed">
+          <div class="blk-label" style="color:#9a6700;">
+            <span class="chg chg-removed">REMOVED</span> Encoder Stack
+          </div>
+          <div class="blk-desc">
+            6 encoder layers with bidirectional self-attention<br>
+            Full input processed by encoder → K, V sent to decoder cross-attention<br>
+            <span class="badge bg-orange">Encoder output (1, S, 512)</span>
+          </div>
+        </div>
+
+        <div class="blk b-embed">
+          <div class="blk-label" style="color:#9a6700;">
+            <span class="chg chg-removed">REMOVED</span> Cross-Attention
+          </div>
+          <div class="blk-desc">
+            In each decoder layer: Q from decoder, K/V from encoder<br>
+            <span class="badge bg-orange">Decoder × Encoder: (1, 8, T, S)</span><br>
+            <b>Not needed</b> in decoder-only — no separate encoder to attend to
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-pos">
+          <div class="blk-label" style="color:#8250df;">
+            <span class="chg chg-changed">CHANGED</span> Sinusoidal Positional Encoding
+          </div>
+          <div class="blk-desc">
+            Fixed sin/cos added to embeddings once before layer 1<br>
+            PE<sub>(pos,2i)</sub> = sin(pos/10000<sup>2i/d</sup>)<br>
+            <b>Problem:</b> can't extrapolate well beyond training length
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-attn">
+          <div class="blk-label" style="color:#0969da;">
+            <span class="chg chg-kept">KEPT</span> Multi-Head Attention (Masked)
+          </div>
+          <div class="blk-desc">
+            Q, K, V from same input · 8 heads × 64 dims<br>
+            <b>Multi-Head Query (MHQ):</b> each head has its own Q, K, V<br>
+            <span class="badge bg-blue">8 heads × 64d = 512d</span>
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-norm">
+          <div class="blk-label" style="color:#656d76;">
+            <span class="chg chg-changed">CHANGED</span> Post-LayerNorm
+          </div>
+          <div class="blk-desc">
+            LayerNorm(x + Sublayer(x)) — norm <b>after</b> residual add<br>
+            <b>Problem:</b> training instability at scale, needs careful warmup
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-ffn">
+          <div class="blk-label" style="color:#1a7f37;">
+            <span class="chg chg-changed">CHANGED</span> FFN with ReLU
+          </div>
+          <div class="blk-desc">
+            FFN(x) = max(0, xW₁ + b₁)W₂ + b₂<br>
+            512 → 2048 → 512 &nbsp; <span class="badge bg-green">ReLU activation</span><br>
+            ~50% neurons are dead (output 0) for any input
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-norm">
+          <div class="blk-label" style="color:#656d76;">
+            <span class="chg chg-changed">CHANGED</span> Post-LayerNorm
+          </div>
+          <div class="blk-desc">LayerNorm after FFN residual</div>
+        </div>
+
+        <div class="arrow">↻ × 6 layers</div>
+
+        <div class="blk b-out">
+          <div class="blk-label" style="color:#8250df;">
+            <span class="chg chg-kept">KEPT</span> Linear → Softmax
+          </div>
+          <div class="blk-desc">
+            Project to vocab, softmax for next-token probabilities<br>
+            <span class="badge bg-purple">(1, T, 37000)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW: LLaMA -->
+    <div class="col">
+      <div class="col-header hdr-new">
+        LLaMA 2 / 3 Architecture (2023–2025)
+        <small>Decoder-Only · 7B–405B params · General</small>
+      </div>
+      <div class="flow flow-new">
+
+        <div class="blk b-embed" style="background:#23863615;">
+          <div class="blk-label" style="color:#1a7f37;">
+            <span class="chg chg-new">SIMPLIFIED</span> Decoder-Only
+          </div>
+          <div class="blk-desc">
+            <b>No encoder. No cross-attention.</b> Just one stack of decoder layers.<br>
+            The input IS the prompt — the model reads and generates in one pass.<br>
+            Early layers learn to "encode" (understand), later layers "decode" (predict).
+          </div>
+        </div>
+
+        <div class="blk b-embed" style="opacity: 0.3; border-bottom: 1px dashed #d0d7de;">
+          <div class="blk-desc" style="text-align:center; font-size:10px;">
+            Cross-attention removed — not needed without an encoder
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-pos" style="background:#23863620;">
+          <div class="blk-label" style="color:#1a7f37;">
+            <span class="chg chg-new">NEW</span> RoPE — Rotary Position Embeddings
+          </div>
+          <div class="blk-desc">
+            Applied <b>inside attention</b> to Q and K at every layer (not added once)<br>
+            Rotates pairs of dimensions by position-dependent angles<br>
+            <b>Key benefit:</b> relative position info baked into dot product<br>
+            Extrapolates to longer sequences than training length<br>
+            <span class="badge bg-green">Applied per-layer, not once at input</span>
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-attn" style="background:#23863620;">
+          <div class="blk-label" style="color:#0969da;">
+            <span class="chg chg-new">UPGRADED</span> Grouped-Query Attention (GQA)
+          </div>
+          <div class="blk-desc">
+            LLaMA 2 70B & LLaMA 3: <b>GQA instead of MHA</b><br>
+            <b>MHA:</b> 32 Q heads, 32 K heads, 32 V heads (original style)<br>
+            <b>GQA:</b> 32 Q heads, <b>8 K heads, 8 V heads</b> — shared across groups<br>
+            Same quality, <b>KV-cache reduced 4×</b> → faster inference<br>
+            <span class="badge bg-blue">32 Q heads</span>
+            <span class="badge bg-green">8 KV heads (shared)</span>
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-norm" style="background:#23863620;">
+          <div class="blk-label" style="color:#1a7f37;">
+            <span class="chg chg-new">NEW</span> Pre-RMSNorm (before sublayer)
+          </div>
+          <div class="blk-desc">
+            RMSNorm(x) = x / √(mean(x²) + ε) · γ<br>
+            <b>Pre-norm:</b> normalize <b>before</b> attention, not after → stable training<br>
+            <b>RMSNorm:</b> no mean subtraction, no bias — simpler & faster than LayerNorm<br>
+            <span class="badge bg-green">No warmup needed</span>
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-ffn" style="background:#23863620;">
+          <div class="blk-label" style="color:#1a7f37;">
+            <span class="chg chg-new">NEW</span> SwiGLU Feed-Forward
+          </div>
+          <div class="blk-desc">
+            SwiGLU(x) = (xW₁ ⊙ Swish(xW<sub>gate</sub>)) W₂<br>
+            <b>3 weight matrices</b> instead of 2 · No bias terms<br>
+            Swish(x) = x · σ(x) — smooth, no dead neurons<br>
+            d_ff adjusted: <b>8/3 × d_model</b> rounded (not 4× like original)<br>
+            <span class="badge bg-green">SwiGLU activation</span>
+            <span class="badge bg-green">No biases</span>
+          </div>
+        </div>
+
+        <div class="arrow">▼</div>
+
+        <div class="blk b-norm" style="background:#23863620;">
+          <div class="blk-label" style="color:#1a7f37;">
+            <span class="chg chg-new">NEW</span> Pre-RMSNorm (before FFN)
+          </div>
+          <div class="blk-desc">RMSNorm before FFN sublayer, same pattern</div>
+        </div>
+
+        <div class="arrow">↻ × 32 layers (7B) / 80 layers (70B)</div>
+
+        <div class="blk b-out">
+          <div class="blk-label" style="color:#8250df;">
+            <span class="chg chg-kept">KEPT</span> Linear → Softmax
+          </div>
+          <div class="blk-desc">
+            Project to vocab, softmax for next-token probabilities<br>
+            <span class="badge bg-purple">(1, T, 128256)</span>
+            <span class="badge bg-kept">LLaMA 3 vocab: 128K tokens</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end .dual -->
+
+  <!-- ======= LLaMA MODEL CONFIGS ======= -->
+  <div class="sect">
+    <h2>LLaMA Model Configurations</h2>
+    <table class="cmp-table">
+      <tr>
+        <th>Parameter</th>
+        <th class="mono">LLaMA 2 7B</th>
+        <th class="mono">LLaMA 2 70B</th>
+        <th class="mono">LLaMA 3 8B</th>
+        <th class="mono">LLaMA 3 70B</th>
+        <th class="mono">LLaMA 3.1 405B</th>
+      </tr>
+      <tr>
+        <td class="comp">Layers</td>
+        <td class="mono">32</td>
+        <td class="mono">80</td>
+        <td class="mono">32</td>
+        <td class="mono">80</td>
+        <td class="mono">126</td>
+      </tr>
+      <tr>
+        <td class="comp">d_model</td>
+        <td class="mono">4096</td>
+        <td class="mono">8192</td>
+        <td class="mono">4096</td>
+        <td class="mono">8192</td>
+        <td class="mono">16384</td>
+      </tr>
+      <tr>
+        <td class="comp">Heads (Q)</td>
+        <td class="mono">32</td>
+        <td class="mono">64</td>
+        <td class="mono">32</td>
+        <td class="mono">64</td>
+        <td class="mono">128</td>
+      </tr>
+      <tr>
+        <td class="comp">KV Heads</td>
+        <td class="mono new">32 (MHA)</td>
+        <td class="mono new">8 (GQA)</td>
+        <td class="mono new">8 (GQA)</td>
+        <td class="mono new">8 (GQA)</td>
+        <td class="mono new">8 (GQA)</td>
+      </tr>
+      <tr>
+        <td class="comp">d_head</td>
+        <td class="mono">128</td>
+        <td class="mono">128</td>
+        <td class="mono">128</td>
+        <td class="mono">128</td>
+        <td class="mono">128</td>
+      </tr>
+      <tr>
+        <td class="comp">d_ff</td>
+        <td class="mono">11008</td>
+        <td class="mono">28672</td>
+        <td class="mono">14336</td>
+        <td class="mono">28672</td>
+        <td class="mono">53248</td>
+      </tr>
+      <tr>
+        <td class="comp">Vocab Size</td>
+        <td class="mono">32000</td>
+        <td class="mono">32000</td>
+        <td class="mono new">128256</td>
+        <td class="mono new">128256</td>
+        <td class="mono new">128256</td>
+      </tr>
+      <tr>
+        <td class="comp">Context Length</td>
+        <td class="mono">4096</td>
+        <td class="mono">4096</td>
+        <td class="mono new">8192</td>
+        <td class="mono new">8192</td>
+        <td class="mono new">131072</td>
+      </tr>
+      <tr>
+        <td class="comp">Norm</td>
+        <td class="mono new">RMSNorm</td>
+        <td class="mono new">RMSNorm</td>
+        <td class="mono new">RMSNorm</td>
+        <td class="mono new">RMSNorm</td>
+        <td class="mono new">RMSNorm</td>
+      </tr>
+      <tr>
+        <td class="comp">Activation</td>
+        <td class="mono new">SwiGLU</td>
+        <td class="mono new">SwiGLU</td>
+        <td class="mono new">SwiGLU</td>
+        <td class="mono new">SwiGLU</td>
+        <td class="mono new">SwiGLU</td>
+      </tr>
+      <tr>
+        <td class="comp">Positional</td>
+        <td class="mono new">RoPE</td>
+        <td class="mono new">RoPE</td>
+        <td class="mono new">RoPE</td>
+        <td class="mono new">RoPE</td>
+        <td class="mono new">RoPE</td>
+      </tr>
+      <tr>
+        <td class="comp">Biases</td>
+        <td class="mono new">None</td>
+        <td class="mono new">None</td>
+        <td class="mono new">None</td>
+        <td class="mono new">None</td>
+        <td class="mono new">None</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ======= DETAILED CHANGE EXPLANATIONS ======= -->
+  <div class="sect">
+    <h2>Each Change Explained</h2>
+
+    <div class="highlight-box" style="margin-top:12px;">
+      <h3>1. Decoder-Only (drop encoder + cross-attention)</h3>
+      <p>
+        The original Transformer was built for translation: an encoder reads French, a decoder writes English.
+        Modern LLMs don't have a separate "input" and "output" — everything is a sequence of tokens.
+        The prompt and the completion are one continuous stream. <b>The causal mask in the decoder is the only structure needed.</b>
+        Early layers learn to represent/understand (encoder's job), later layers learn to predict (decoder's job).
+        This also eliminates the cross-attention layer (~1M params/layer), simplifying the architecture.
+      </p>
+    </div>
+
+    <div class="highlight-box">
+      <h3>2. Pre-RMSNorm (instead of Post-LayerNorm)</h3>
+      <div class="formula">
+        <span class="label">Original (Post-LN):</span>
+        <span style="color:#9a6700;">output = LayerNorm(x + Sublayer(x))</span><br>
+        <span class="label">LLaMA (Pre-RMSNorm):</span>
+        <span style="color:#0969da;">output = x + Sublayer(RMSNorm(x))</span>
+      </div>
+      <p>
+        <b>Pre-norm</b> normalizes the input BEFORE the sublayer, then adds the residual. This keeps the residual stream "clean" — information flows directly through skip connections without being distorted by normalization. <b>Training is much more stable</b> at large scale (no need for careful warmup).
+        <br><br>
+        <b>RMSNorm</b> vs LayerNorm: LayerNorm does mean subtraction + variance normalization. RMSNorm only does root-mean-square normalization (no mean subtraction, no bias). Simpler, 10-15% faster, same performance.
+      </p>
+    </div>
+
+    <div class="highlight-box">
+      <h3>3. RoPE — Rotary Position Embeddings</h3>
+      <div class="formula">
+        <span class="label">Original: add PE to embeddings once, before layer 1</span>
+        <span style="color:#9a6700;">x = Embedding(token) + PE(position)</span><br>
+        <span class="label">LLaMA: rotate Q,K vectors at every attention layer</span>
+        <span style="color:#0969da;">q'_m = R(m) · q_m &nbsp;&nbsp; k'_n = R(n) · k_n</span><br>
+        <span style="color:#0969da;">q'_m · k'_n = q_m · R(m-n) · k_n</span> ← <span style="color:#1a7f37;">depends only on relative position (m-n)!</span>
+      </div>
+      <p>
+        RoPE rotates pairs of dimensions by angles that depend on the position. The dot product between rotated Q and K naturally encodes the <b>relative distance</b> between tokens, not their absolute position. This means a model trained on 4K context can be extended to 128K+ with minimal finetuning (RoPE frequency scaling). The original sinusoidal encoding was absolute and didn't extrapolate.
+      </p>
+    </div>
+
+    <div class="highlight-box">
+      <h3>4. Grouped-Query Attention (GQA)</h3>
+      <div class="formula">
+        <span class="label">MHA (original): every head has its own Q, K, V</span>
+        <span style="color:#9a6700;">32 Q heads × 128d, 32 K heads × 128d, 32 V heads × 128d</span><br>
+        <span class="label">GQA (LLaMA 2 70B, LLaMA 3): Q heads share K,V across groups</span>
+        <span style="color:#0969da;">32 Q heads × 128d, 8 K heads × 128d, 8 V heads × 128d</span><br>
+        <span style="color:#1a7f37;">4 Q heads share 1 K head and 1 V head → 4× less KV-cache</span>
+      </div>
+      <p>
+        During autoregressive inference, the model stores all previous tokens' K and V tensors (the "KV-cache"). For a 70B model with 80 layers, this cache is <b>gigabytes</b>. GQA reduces K/V heads from 64 to 8 → cache shrinks 8×, inference throughput increases dramatically, with <b>negligible quality loss</b>.
+      </p>
+    </div>
+
+    <div class="highlight-box">
+      <h3>5. SwiGLU (instead of ReLU FFN)</h3>
+      <div class="formula">
+        <span class="label">Original FFN:</span>
+        <span style="color:#9a6700;">FFN(x) = max(0, xW₁ + b₁) · W₂ + b₂</span> &nbsp; <span style="color:#656d76;">(2 matrices, ReLU)</span><br>
+        <span class="label">LLaMA SwiGLU:</span>
+        <span style="color:#0969da;">SwiGLU(x) = (xW₁ ⊙ Swish(xW<sub>gate</sub>)) · W₂</span> &nbsp; <span style="color:#656d76;">(3 matrices, no bias)</span><br>
+        <span style="color:#1a7f37;">Swish(x) = x · σ(x) — smooth gating, no dead neurons</span>
+      </div>
+      <p>
+        ReLU kills any negative input to exactly 0 — "dead neurons" that never activate and never learn. <b>SwiGLU</b> uses a smooth gate (Swish) that allows small negative values through, plus a multiplicative gating mechanism that lets the network learn <b>which neurons to activate</b>. The third weight matrix (W<sub>gate</sub>) adds ~50% more FFN params, so d_ff is reduced from 4× to ~2.67× d_model to keep total params similar. All bias terms are removed.
+      </p>
+    </div>
+
+    <div class="highlight-box">
+      <h3>6. No Bias Terms Anywhere</h3>
+      <p>
+        LLaMA removes <b>all bias vectors</b> from linear layers, attention projections, and normalization. The rationale: at scale, biases add negligible expressivity but add complexity to quantization and parallelism. Removing them simplifies the architecture with no measurable quality loss.
+      </p>
+    </div>
+  </div>
+
+  <!-- ======= VISUAL: ONE DECODER BLOCK ======= -->
+  <div class="sect">
+    <h2>One LLaMA Decoder Block (Pseudocode)</h2>
+    <div class="formula" style="font-size:12px; line-height:2.2;">
+      <span style="color:#656d76;"># Input: x of shape (B, T, 4096)</span><br>
+      <br>
+      <span style="color:#656d76;"># Sub-layer 1: Attention</span><br>
+      <span style="color:#1a7f37;">h</span> = <span style="color:#0969da;">RMSNorm</span>(x) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># pre-norm → (B, T, 4096)</span><br>
+      <span style="color:#1a7f37;">Q</span> = h · W<sup>Q</sup> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 4096) → (B, T, 4096) → reshape (B, 32, T, 128)</span><br>
+      <span style="color:#1a7f37;">K</span> = h · W<sup>K</sup> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 4096) → (B, T, 1024) → reshape (B, 8, T, 128)</span><br>
+      <span style="color:#1a7f37;">V</span> = h · W<sup>V</sup> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 4096) → (B, T, 1024) → reshape (B, 8, T, 128)</span><br>
+      <span style="color:#1a7f37;">Q, K</span> = <span style="color:#8250df;">apply_rope</span>(Q, K, pos) &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># rotate Q,K by position-dependent angles</span><br>
+      <span style="color:#1a7f37;">K, V</span> = <span style="color:#8250df;">repeat_kv</span>(K, V, n_rep=4) <span style="color:#656d76;"># expand 8→32 heads by repeating for GQA</span><br>
+      <span style="color:#1a7f37;">attn</span> = softmax(Q · K<sup>T</sup> / √128) · V <span style="color:#656d76;"># (B, 32, T, T) × (B, 32, T, 128) → (B, 32, T, 128)</span><br>
+      <span style="color:#1a7f37;">attn</span> = reshape(attn) · W<sup>O</sup> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 4096) → (B, T, 4096)</span><br>
+      <span style="color:#9a6700;">x</span> = x + attn &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># residual connection</span><br>
+      <br>
+      <span style="color:#656d76;"># Sub-layer 2: Feed-Forward (SwiGLU)</span><br>
+      <span style="color:#1a7f37;">h</span> = <span style="color:#0969da;">RMSNorm</span>(x) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># pre-norm → (B, T, 4096)</span><br>
+      <span style="color:#1a7f37;">gate</span> = <span style="color:#8250df;">swish</span>(h · W<sub>gate</sub>) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 4096) → (B, T, 11008)</span><br>
+      <span style="color:#1a7f37;">up</span> = h · W<sub>up</sub> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 4096) → (B, T, 11008)</span><br>
+      <span style="color:#1a7f37;">ffn</span> = (gate ⊙ up) · W<sub>down</sub> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># (B, T, 11008) → (B, T, 4096)</span><br>
+      <span style="color:#9a6700;">x</span> = x + ffn &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#656d76;"># residual connection</span><br>
+      <br>
+      <span style="color:#656d76;"># Output: x of shape (B, T, 4096) — same shape in, same shape out</span>
+    </div>
+  </div>
+
+  <p class="note">LLaMA architecture info sourced from the LLaMA 2 and LLaMA 3 papers (Meta, 2023–2024). All modern open models (Mistral, Qwen, DeepSeek) use nearly identical changes.</p>
+</div>
+</body>
+</html>

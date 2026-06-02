@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tensor Shape Flow — Complete Trace</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+  .container { max-width: 1000px; width: 100%; }
+  h1 { text-align: center; font-size: 24px; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin-bottom: 8px; }
+  .config { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px; }
+  .chip { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 16px; padding: 4px 12px; font-size: 11px; font-family: monospace; }
+  .chip span { color: #0969da; }
+  .section { margin-bottom: 28px; }
+  .section h2 { font-size: 16px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #d0d7de; }
+  .enc-h { color: #0969da; }
+  .dec-h { color: #cf222e; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f6f8fa; border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; font-weight: 600; color: #656d76; }
+  td { border: 1px solid #d0d7de; padding: 8px 12px; }
+  .step-num { color: #656d76; font-weight: 700; font-family: monospace; }
+  .op { color: #1f2328; }
+  .shape { font-family: 'Cascadia Code', monospace; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+  .shape-in { background: #ddf4ff; color: #0969da; border: 1px solid #388bfd30; }
+  .shape-mid { background: #fff8c5; color: #9a6700; border: 1px solid #d2992230; }
+  .shape-out { background: #dafbe1; color: #1a7f37; border: 1px solid #3fb95030; }
+  .shape-attn { background: #ffebe9; color: #cf222e; border: 1px solid #f8514930; }
+  .note { font-size: 11px; color: #656d76; }
+  .params { font-family: monospace; font-size: 11px; color: #8250df; }
+  .divider { height: 1px; background: #d0d7de; margin: 4px 0; }
+  .summary-box { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 20px; margin-top: 24px; }
+  .summary-box h2 { font-size: 16px; margin-bottom: 12px; color: #9a6700; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Complete Tensor Shape Flow</h1>
+  <p class="sub">Every operation traced through the Transformer — encoder and decoder</p>
+  <div class="config">
+    <div class="chip"><span>B</span> = 1 (batch)</div>
+    <div class="chip"><span>S</span> = 10 (source len)</div>
+    <div class="chip"><span>T</span> = 8 (target len)</div>
+    <div class="chip"><span>d_model</span> = 512</div>
+    <div class="chip"><span>h</span> = 8 heads</div>
+    <div class="chip"><span>d_k</span> = 64</div>
+    <div class="chip"><span>d_ff</span> = 2048</div>
+    <div class="chip"><span>vocab</span> = 37000</div>
+  </div>
+
+  <!-- ENCODER -->
+  <div class="section">
+    <h2 class="enc-h">Encoder Path (one layer, repeated ×6)</h2>
+    <table>
+      <tr><th width="40">#</th><th>Operation</th><th>Input Shape</th><th>Output Shape</th><th>Trainable Params</th></tr>
+      <tr>
+        <td class="step-num">1</td>
+        <td class="op">Input token IDs</td>
+        <td>—</td>
+        <td><span class="shape shape-in">(1, 10)</span></td>
+        <td class="note">—</td>
+      </tr>
+      <tr>
+        <td class="step-num">2</td>
+        <td class="op">Token Embedding lookup</td>
+        <td><span class="shape shape-in">(1, 10)</span></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td class="params">37000 × 512 = 18.9M</td>
+      </tr>
+      <tr>
+        <td class="step-num">3</td>
+        <td class="op">× √d_model (embedding scale)</td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td class="note">—</td>
+      </tr>
+      <tr>
+        <td class="step-num">4</td>
+        <td class="op">+ Positional Encoding</td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td class="note">Not learned (sinusoidal)</td>
+      </tr>
+      <tr>
+        <td class="step-num">5</td>
+        <td class="op">Dropout (p=0.1)</td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td class="note">—</td>
+      </tr>
+      <tr><td colspan="5" class="divider"></td></tr>
+      <tr>
+        <td class="step-num">6</td>
+        <td class="op">Q = X · W<sup>Q</sup></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td><span class="shape shape-mid">(1, 10, 512)</span></td>
+        <td class="params">512 × 512 = 262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">7</td>
+        <td class="op">K = X · W<sup>K</sup></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td><span class="shape shape-mid">(1, 10, 512)</span></td>
+        <td class="params">512 × 512 = 262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">8</td>
+        <td class="op">V = X · W<sup>V</sup></td>
+        <td><span class="shape shape-in">(1, 10, 512)</span></td>
+        <td><span class="shape shape-mid">(1, 10, 512)</span></td>
+        <td class="params">512 × 512 = 262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">9</td>
+        <td class="op">Reshape Q, K, V for 8 heads</td>
+        <td><span class="shape shape-mid">(1, 10, 512)</span></td>
+        <td><span class="shape shape-attn">(1, 8, 10, 64)</span></td>
+        <td class="note">Reshape only, no params</td>
+      </tr>
+      <tr>
+        <td class="step-num">10</td>
+        <td class="op">Scores = Q · K<sup>T</sup> / √64</td>
+        <td><span class="shape shape-attn">(1, 8, 10, 64) × (1, 8, 64, 10)</span></td>
+        <td><span class="shape shape-attn">(1, 8, 10, 10)</span></td>
+        <td class="note">÷ 8 for scaling</td>
+      </tr>
+      <tr>
+        <td class="step-num">11</td>
+        <td class="op">Attention weights = softmax(Scores)</td>
+        <td><span class="shape shape-attn">(1, 8, 10, 10)</span></td>
+        <td><span class="shape shape-attn">(1, 8, 10, 10)</span></td>
+        <td class="note">Each row sums to 1</td>
+      </tr>
+      <tr>
+        <td class="step-num">12</td>
+        <td class="op">Context = Weights · V</td>
+        <td><span class="shape shape-attn">(1, 8, 10, 10) × (1, 8, 10, 64)</span></td>
+        <td><span class="shape shape-attn">(1, 8, 10, 64)</span></td>
+        <td class="note">Weighted sum of values</td>
+      </tr>
+      <tr>
+        <td class="step-num">13</td>
+        <td class="op">Concat heads + reshape</td>
+        <td><span class="shape shape-attn">(1, 8, 10, 64)</span></td>
+        <td><span class="shape shape-mid">(1, 10, 512)</span></td>
+        <td class="note">8 × 64 = 512</td>
+      </tr>
+      <tr>
+        <td class="step-num">14</td>
+        <td class="op">Output projection W<sup>O</sup></td>
+        <td><span class="shape shape-mid">(1, 10, 512)</span></td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td class="params">512 × 512 = 262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">15</td>
+        <td class="op">Residual + LayerNorm</td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td class="params">512 × 2 = 1K (γ, β)</td>
+      </tr>
+      <tr><td colspan="5" class="divider"></td></tr>
+      <tr>
+        <td class="step-num">16</td>
+        <td class="op">FFN: W<sub>1</sub> + ReLU</td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td><span class="shape shape-mid">(1, 10, 2048)</span></td>
+        <td class="params">512 × 2048 + 2048 = 1.05M</td>
+      </tr>
+      <tr>
+        <td class="step-num">17</td>
+        <td class="op">FFN: W<sub>2</sub></td>
+        <td><span class="shape shape-mid">(1, 10, 2048)</span></td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td class="params">2048 × 512 + 512 = 1.05M</td>
+      </tr>
+      <tr>
+        <td class="step-num">18</td>
+        <td class="op">Residual + LayerNorm</td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td class="params">512 × 2 = 1K (γ, β)</td>
+      </tr>
+      <tr>
+        <td class="step-num">19</td>
+        <td class="op">→ Repeat steps 6-18 for N=6 layers</td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td class="note">Encoder output</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- DECODER -->
+  <div class="section">
+    <h2 class="dec-h">Decoder Path (one layer, repeated ×6)</h2>
+    <table>
+      <tr><th width="40">#</th><th>Operation</th><th>Input Shape</th><th>Output Shape</th><th>Notes</th></tr>
+      <tr>
+        <td class="step-num">1</td>
+        <td class="op">Output token IDs (shifted right)</td>
+        <td>—</td>
+        <td><span class="shape shape-in">(1, 8)</span></td>
+        <td class="note">Start with &lt;BOS&gt; token</td>
+      </tr>
+      <tr>
+        <td class="step-num">2</td>
+        <td class="op">Token Embedding + PE + Dropout</td>
+        <td><span class="shape shape-in">(1, 8)</span></td>
+        <td><span class="shape shape-in">(1, 8, 512)</span></td>
+        <td class="note">Same embedding weights as encoder</td>
+      </tr>
+      <tr><td colspan="5" class="divider"></td></tr>
+      <tr>
+        <td class="step-num">3</td>
+        <td class="op">Masked Self-Attention: Q, K, V from decoder</td>
+        <td><span class="shape shape-in">(1, 8, 512)</span></td>
+        <td><span class="shape shape-attn">Q,K,V: (1, 8, 8, 64)</span></td>
+        <td class="params">3 × 262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">4</td>
+        <td class="op">Scores + Causal Mask (upper triangle = -∞)</td>
+        <td><span class="shape shape-attn">(1, 8, 8, 64)</span></td>
+        <td><span class="shape shape-attn">(1, 8, 8, 8)</span></td>
+        <td class="note">Token i can only see tokens ≤ i</td>
+      </tr>
+      <tr>
+        <td class="step-num">5</td>
+        <td class="op">softmax → × V → concat → W<sup>O</sup></td>
+        <td>—</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td class="params">262K (W<sup>O</sup>)</td>
+      </tr>
+      <tr>
+        <td class="step-num">6</td>
+        <td class="op">Residual + LayerNorm</td>
+        <td>—</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td>—</td>
+      </tr>
+      <tr><td colspan="5" class="divider"></td></tr>
+      <tr>
+        <td class="step-num">7</td>
+        <td class="op">Cross-Attention: Q from decoder</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td><span class="shape shape-mid">Q: (1, 8, 8, 64)</span></td>
+        <td class="params">262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">8</td>
+        <td class="op">Cross-Attention: K, V from encoder output</td>
+        <td><span class="shape shape-out">(1, 10, 512)</span></td>
+        <td><span class="shape shape-mid">K,V: (1, 8, 10, 64)</span></td>
+        <td class="params">2 × 262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">9</td>
+        <td class="op">Cross-Attention Scores: Q · K<sup>T</sup></td>
+        <td><span class="shape shape-mid">(1, 8, 8, 64) × (1, 8, 64, 10)</span></td>
+        <td><span class="shape shape-attn">(1, 8, 8, 10)</span></td>
+        <td class="note">Decoder attends to encoder (T×S)</td>
+      </tr>
+      <tr>
+        <td class="step-num">10</td>
+        <td class="op">softmax → × V → concat → W<sup>O</sup></td>
+        <td>—</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td class="params">262K</td>
+      </tr>
+      <tr>
+        <td class="step-num">11</td>
+        <td class="op">Residual + LayerNorm</td>
+        <td>—</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td>—</td>
+      </tr>
+      <tr><td colspan="5" class="divider"></td></tr>
+      <tr>
+        <td class="step-num">12</td>
+        <td class="op">FFN: 512 → 2048 → 512</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td class="params">2.1M</td>
+      </tr>
+      <tr>
+        <td class="step-num">13</td>
+        <td class="op">Residual + LayerNorm</td>
+        <td>—</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td class="step-num">14</td>
+        <td class="op">→ Repeat steps 3-13 for N=6 layers</td>
+        <td>—</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td class="note">Decoder output</td>
+      </tr>
+      <tr><td colspan="5" class="divider"></td></tr>
+      <tr>
+        <td class="step-num">15</td>
+        <td class="op">Linear projection (shared with embedding)</td>
+        <td><span class="shape shape-out">(1, 8, 512)</span></td>
+        <td><span class="shape shape-mid">(1, 8, 37000)</span></td>
+        <td class="note">Weights shared with step 2</td>
+      </tr>
+      <tr>
+        <td class="step-num">16</td>
+        <td class="op">Softmax → output probabilities</td>
+        <td><span class="shape shape-mid">(1, 8, 37000)</span></td>
+        <td><span class="shape shape-out">(1, 8, 37000)</span></td>
+        <td class="note">Next-token distribution</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- PARAMETER SUMMARY -->
+  <div class="summary-box">
+    <h2>Total Parameter Count — Base Model</h2>
+    <table>
+      <tr><th>Component</th><th>Per Layer</th><th>× Layers</th><th>Total</th></tr>
+      <tr>
+        <td>Token Embedding (shared)</td>
+        <td>37000 × 512</td>
+        <td>1</td>
+        <td style="color:#0969da;">18.9M</td>
+      </tr>
+      <tr>
+        <td>Encoder Self-Attention (Q, K, V, O)</td>
+        <td>4 × 512 × 512 = 1.05M</td>
+        <td>6</td>
+        <td style="color:#0969da;">6.3M</td>
+      </tr>
+      <tr>
+        <td>Encoder FFN</td>
+        <td>512×2048 + 2048×512 = 2.1M</td>
+        <td>6</td>
+        <td style="color:#0969da;">12.6M</td>
+      </tr>
+      <tr>
+        <td>Encoder LayerNorm</td>
+        <td>2 × 512 × 2 = 2K</td>
+        <td>6</td>
+        <td style="color:#656d76;">12K</td>
+      </tr>
+      <tr>
+        <td>Decoder Self-Attention</td>
+        <td>1.05M</td>
+        <td>6</td>
+        <td style="color:#cf222e;">6.3M</td>
+      </tr>
+      <tr>
+        <td>Decoder Cross-Attention</td>
+        <td>1.05M</td>
+        <td>6</td>
+        <td style="color:#cf222e;">6.3M</td>
+      </tr>
+      <tr>
+        <td>Decoder FFN</td>
+        <td>2.1M</td>
+        <td>6</td>
+        <td style="color:#cf222e;">12.6M</td>
+      </tr>
+      <tr>
+        <td>Decoder LayerNorm</td>
+        <td>3 × 512 × 2 = 3K</td>
+        <td>6</td>
+        <td style="color:#656d76;">18K</td>
+      </tr>
+      <tr style="background:#f6f8fa; font-weight:700;">
+        <td colspan="3" style="text-align:right; color:#9a6700;">Total (approximate)</td>
+        <td style="color:#9a6700; font-size:16px;">~65M</td>
+      </tr>
+    </table>
+    <p style="font-size:11px; color:#656d76; margin-top:12px;">
+      For context: GPT-2 = 1.5B · GPT-3 = 175B · LLaMA-2 = 7B-70B · GPT-4 estimated at ~1.8T (MoE).
+      The base Transformer is tiny by modern standards — the architecture scaled spectacularly.
+    </p>
+  </div>
+</div>
+</body>
+</html>

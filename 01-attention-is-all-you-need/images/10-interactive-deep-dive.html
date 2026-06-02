@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Deep Dive — Interactive Architecture</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #ffffff; color: #1f2328;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.5; padding: 32px 20px 80px;
+}
+.page { max-width: 900px; margin: 0 auto; }
+h1 { font-size: 26px; text-align: center; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #656d76; font-size: 13px; margin-bottom: 24px; }
+
+/* ── config bar ────────────────────────────────────────── */
+.config {
+  display: flex; justify-content: center; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 28px;
+}
+.tag {
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 20px;
+  padding: 4px 14px; font-size: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.tag b { color: #0969da; }
+
+/* ── flow rail ─────────────────────────────────────────── */
+.rail {
+  position: relative;
+  margin-left: 38px;          /* room for the vertical line */
+  padding-left: 32px;
+}
+.rail::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: #d0d7de; border-radius: 2px;
+}
+
+/* ── stage (one block on the rail) ─────────────────────── */
+.stage {
+  position: relative;
+  margin-bottom: 6px;
+}
+.stage::before {            /* dot on the rail */
+  content: '';
+  position: absolute; left: -38px; top: 14px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: #0969da; border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #0969da;
+  z-index: 2;
+}
+.stage.enc::before  { background: #0969da; box-shadow: 0 0 0 2px #0969da; }
+.stage.dec::before  { background: #cf222e; box-shadow: 0 0 0 2px #cf222e; }
+.stage.out::before  { background: #1a7f37; box-shadow: 0 0 0 2px #1a7f37; }
+.stage.shared::before { background: #8250df; box-shadow: 0 0 0 2px #8250df; }
+
+/* ── header bar (always visible) ───────────────────────── */
+.stage-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 10px;
+  cursor: pointer; user-select: none;
+  transition: background .15s;
+}
+.stage-hdr:hover { filter: brightness(.97); }
+.stage-hdr .arrow {
+  font-size: 11px; transition: transform .2s; color: #656d76;
+  flex-shrink: 0; width: 18px; text-align: center;
+}
+.stage.open .arrow { transform: rotate(90deg); }
+.stage-hdr .title { font-weight: 700; font-size: 14px; flex: 1; }
+.stage-hdr .io {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px; color: #656d76; white-space: nowrap;
+}
+
+/* colour families */
+.stage-hdr.c-embed  { background: #f0f2f5; border: 1px solid #d0d7de; }
+.stage-hdr.c-enc    { background: #ddf4ff; border: 1px solid #0969da40; }
+.stage-hdr.c-dec    { background: #ffebe9; border: 1px solid #cf222e40; }
+.stage-hdr.c-cross  { background: #fff8c5; border: 1px solid #d4a72c60; }
+.stage-hdr.c-ffn    { background: #dafbe1; border: 1px solid #1a7f3740; }
+.stage-hdr.c-norm   { background: #f6f8fa; border: 1px solid #d0d7de; }
+.stage-hdr.c-out    { background: #fbefff; border: 1px solid #8250df40; }
+
+/* ── detail panel (expandable) ─────────────────────────── */
+.detail {
+  max-height: 0; overflow: hidden;
+  transition: max-height .35s ease;
+  margin-left: 18px;
+}
+.stage.open .detail { max-height: 4000px; }
+.detail-inner {
+  padding: 12px 16px 16px;
+  border-left: 3px solid #e1e4e8;
+  margin: 4px 0 10px;
+  font-size: 13px; color: #1f2328;
+}
+.detail-inner p { margin-bottom: 8px; }
+.detail-inner .eq {
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px;
+  padding: 8px 14px; margin: 8px 0;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px; overflow-x: auto; white-space: pre;
+}
+.detail-inner table {
+  width: 100%; border-collapse: collapse; margin: 8px 0;
+  font-size: 12px;
+}
+.detail-inner th, .detail-inner td {
+  border: 1px solid #d0d7de; padding: 5px 10px; text-align: left;
+}
+.detail-inner th { background: #f6f8fa; font-weight: 600; }
+.detail-inner .note {
+  background: #fff8c5; border-left: 3px solid #d4a72c;
+  padding: 6px 12px; border-radius: 0 6px 6px 0;
+  font-size: 12px; margin: 8px 0;
+}
+.detail-inner .shape {
+  display: inline-block;
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 4px;
+  padding: 1px 7px; font-family: 'Cascadia Code', monospace;
+  font-size: 11px; color: #0969da;
+}
+.conn-arrow {
+  text-align: center; color: #656d76; font-size: 18px;
+  margin: 2px 0; letter-spacing: 2px;
+  padding-left: 18px;
+}
+
+/* ── section dividers ──────────────────────────────────── */
+.section-label {
+  font-size: 12px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: #656d76;
+  margin: 20px 0 8px; padding-left: 4px;
+}
+.section-label.enc-lbl { color: #0969da; }
+.section-label.dec-lbl { color: #cf222e; }
+.section-label.out-lbl { color: #1a7f37; }
+
+/* ── repeat badge ──────────────────────────────────────── */
+.repeat {
+  text-align: center; font-size: 12px; font-weight: 700;
+  color: #656d76; background: #f6f8fa; border: 1px dashed #d0d7de;
+  border-radius: 8px; padding: 6px 0; margin: 4px 0 4px 18px;
+}
+
+/* ── expand-all bar ────────────────────────────────────── */
+.toolbar {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-bottom: 16px;
+}
+.toolbar button {
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px;
+  padding: 5px 14px; font-size: 12px; cursor: pointer;
+  font-family: inherit;
+}
+.toolbar button:hover { background: #eaeef2; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Transformer — Interactive Architecture Deep Dive</h1>
+<p class="subtitle">Click any block to expand. Tensor shapes track a single example through the full encoder → decoder path.</p>
+
+<div class="config">
+  <span class="tag">B = <b>1</b></span>
+  <span class="tag">S<sub>src</sub> = <b>10</b></span>
+  <span class="tag">S<sub>tgt</sub> = <b>8</b></span>
+  <span class="tag">d_model = <b>512</b></span>
+  <span class="tag">h = <b>8</b></span>
+  <span class="tag">d_k = d_v = <b>64</b></span>
+  <span class="tag">d_ff = <b>2048</b></span>
+  <span class="tag">N = <b>6</b></span>
+  <span class="tag">vocab = <b>37000</b></span>
+</div>
+
+<div class="toolbar">
+  <button onclick="expandAll()">Expand All</button>
+  <button onclick="collapseAll()">Collapse All</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     ENCODER INPUT
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-label enc-lbl">Encoder Input</div>
+
+<div class="rail">
+
+<!-- 1 ─ Source Tokens -->
+<div class="stage enc" id="s1">
+  <div class="stage-hdr c-embed" onclick="toggle('s1')">
+    <span class="arrow">▶</span>
+    <span class="title">① Source Token IDs</span>
+    <span class="io">(1, 10)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>The raw input sentence is tokenized (BPE) into integer IDs.</p>
+    <table>
+      <tr><th>Position</th><th>Token</th><th>ID</th></tr>
+      <tr><td>0</td><td>The</td><td>1996</td></tr>
+      <tr><td>1</td><td>cat</td><td>2368</td></tr>
+      <tr><td>2</td><td>sat</td><td>3940</td></tr>
+      <tr><td>…</td><td>…</td><td>…</td></tr>
+      <tr><td>9</td><td>.</td><td>4</td></tr>
+    </table>
+    <p><b>Output:</b> <span class="shape">(1, 10)</span> — batch=1, seq_len=10 integer tensor.</p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓</div>
+
+<!-- 2 ─ Token Embedding -->
+<div class="stage enc" id="s2">
+  <div class="stage-hdr c-embed" onclick="toggle('s2')">
+    <span class="arrow">▶</span>
+    <span class="title">② Token Embedding</span>
+    <span class="io">(1, 10) → (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Each token ID indexes into a learned matrix <b>E</b> ∈ ℝ<sup>37000 × 512</sup>.</p>
+    <div class="eq">embed = E[token_ids]          # (1, 10, 512)</div>
+    <p>Each of the 10 tokens is now a 512-dim vector. Tokens have <b>no position info yet</b> — "cat" at position 1 and "cat" at position 7 would be identical.</p>
+    <p><b>Parameters:</b> 37,000 × 512 = <b>18.9M</b></p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ element-wise +</div>
+
+<!-- 3 ─ Positional Encoding -->
+<div class="stage enc" id="s3">
+  <div class="stage-hdr c-embed" onclick="toggle('s3')">
+    <span class="arrow">▶</span>
+    <span class="title">③ + Positional Encoding</span>
+    <span class="io">(1, 10, 512) → (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Sinusoidal position vectors are <b>added element-wise</b> to the embeddings. Not concatenated, not a separate layer — a pure sum.</p>
+    <div class="eq">PE(pos, 2i)   = sin(pos / 10000^(2i/512))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/512))
+
+x = embed + PE          # (1, 10, 512)</div>
+    <p>This happens <b>once</b>, before layer 1. It is NOT reapplied between layers.</p>
+    <div class="note">
+      <b>Why add, not concat?</b> Adding keeps d_model = 512 unchanged. The PE magnitude is small relative to the embedding — it nudges the vector to encode position without dominating the learned content.
+    </div>
+    <p><b>Parameters:</b> 0 (sinusoids are fixed, not learned)</p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span> — this is <b>x</b>, the input to encoder layer 1.</p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ dropout(0.1)</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     ENCODER LAYER
+     ═══════════════════════════════════════════════════════ -->
+</div><!-- /rail -->
+
+<div class="section-label enc-lbl">Encoder Layer (× 6)</div>
+
+<div class="rail">
+
+<!-- 4 ─ Q K V Projection -->
+<div class="stage enc" id="s4">
+  <div class="stage-hdr c-enc" onclick="toggle('s4')">
+    <span class="arrow">▶</span>
+    <span class="title">④ Q, K, V Linear Projections</span>
+    <span class="io">(1, 10, 512) → 3 × (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Three <b>independent learned weight matrices</b> project the same input <b>x</b> into queries, keys, and values:</p>
+    <div class="eq">Q = x @ W_Q          # (1, 10, 512) @ (512, 512) → (1, 10, 512)
+K = x @ W_K          # (1, 10, 512) @ (512, 512) → (1, 10, 512)
+V = x @ W_V          # (1, 10, 512) @ (512, 512) → (1, 10, 512)</div>
+    <table>
+      <tr><th>Matrix</th><th>Shape</th><th>Purpose</th></tr>
+      <tr><td>W<sup>Q</sup></td><td>512 × 512</td><td>What each token <b>looks for</b></td></tr>
+      <tr><td>W<sup>K</sup></td><td>512 × 512</td><td>What each token <b>advertises</b></td></tr>
+      <tr><td>W<sup>V</sup></td><td>512 × 512</td><td>What each token <b>shares</b> when attended to</td></tr>
+    </table>
+    <div class="note">
+      These are plain linear layers (no activation, no ReLU). They are <b>not</b> the positional encoding — PE is already baked into x. The projections learn to extract different "aspects" of each token's representation.
+    </div>
+    <p><b>Parameters:</b> 3 × 512 × 512 = <b>786K</b> (+ biases in the original paper)</p>
+    <p><b>Output:</b> Q, K, V each <span class="shape">(1, 10, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ reshape</div>
+
+<!-- 5 ─ Reshape into Heads -->
+<div class="stage enc" id="s5">
+  <div class="stage-hdr c-enc" onclick="toggle('s5')">
+    <span class="arrow">▶</span>
+    <span class="title">⑤ Reshape into 8 Heads</span>
+    <span class="io">3 × (1, 10, 512) → 3 × (1, 8, 10, 64)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Each 512-dim vector is split into 8 chunks of 64 dims, then transposed so the head dimension comes before the sequence dimension:</p>
+    <div class="eq">Q = Q.view(1, 10, 8, 64).transpose(1, 2)   # → (1, 8, 10, 64)
+K = K.view(1, 10, 8, 64).transpose(1, 2)   # → (1, 8, 10, 64)
+V = V.view(1, 10, 8, 64).transpose(1, 2)   # → (1, 8, 10, 64)</div>
+    <p>This is a <b>free operation</b> — no parameters, just reshaping memory. Each head now operates on its own 64-dim slice independently.</p>
+    <div class="note">
+      <b>Why reshape, not 8 separate W matrices?</b> Mathematically identical, but one big (512×512) matmul followed by a reshape is much faster on GPUs than 8 separate (512×64) matmuls. Same result, better hardware utilization.
+    </div>
+    <p><b>Parameters:</b> 0 (reshape only)</p>
+    <p><b>Output:</b> Q, K, V each <span class="shape">(1, 8, 10, 64)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓</div>
+
+<!-- 6 ─ Attention Scores -->
+<div class="stage enc" id="s6">
+  <div class="stage-hdr c-enc" onclick="toggle('s6')">
+    <span class="arrow">▶</span>
+    <span class="title">⑥ Scaled Dot-Product: QK<sup>T</sup> / √64</span>
+    <span class="io">(1, 8, 10, 64) × (1, 8, 64, 10) → (1, 8, 10, 10)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Every token's query is compared against every token's key via dot product, then scaled:</p>
+    <div class="eq">scores = (Q @ K.transpose(-2, -1)) / √64     # (1, 8, 10, 10)</div>
+    <p>The shape <span class="shape">(1, 8, 10, 10)</span> means: for each of 8 heads, a 10×10 matrix where entry (i, j) = "how much should token i attend to token j."</p>
+    <table>
+      <tr><th>Dimension</th><th>Size</th><th>Meaning</th></tr>
+      <tr><td>Batch</td><td>1</td><td>One sentence</td></tr>
+      <tr><td>Heads</td><td>8</td><td>8 independent perspectives</td></tr>
+      <tr><td>Rows (queries)</td><td>10</td><td>Each source token asking</td></tr>
+      <tr><td>Cols (keys)</td><td>10</td><td>Each source token answering</td></tr>
+    </table>
+    <div class="note">
+      <b>Why ÷ √64?</b> Without scaling, dot products of 64-dim vectors have variance ≈ 64. Large values push softmax into saturation (near 0 or 1 outputs) where gradients vanish. Dividing by √64 = 8 normalizes variance back to ~1.
+    </div>
+    <p><b>Output:</b> <span class="shape">(1, 8, 10, 10)</span> — raw attention scores</p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ softmax(dim=-1)</div>
+
+<!-- 7 ─ Softmax -->
+<div class="stage enc" id="s7">
+  <div class="stage-hdr c-enc" onclick="toggle('s7')">
+    <span class="arrow">▶</span>
+    <span class="title">⑦ Softmax → Attention Weights</span>
+    <span class="io">(1, 8, 10, 10) → (1, 8, 10, 10)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Each row of the 10×10 score matrix is turned into a probability distribution:</p>
+    <div class="eq">attn_weights = softmax(scores, dim=-1)   # (1, 8, 10, 10)
+# each row sums to 1.0</div>
+    <p>Row i is the attention distribution for token i — how much weight it places on each other token.</p>
+    <p>Example for head 3, token "cat" (row 1):</p>
+    <table>
+      <tr><th></th><th>The</th><th>cat</th><th>sat</th><th>…</th><th>.</th></tr>
+      <tr><td><b>cat →</b></td><td>0.05</td><td>0.08</td><td><b>0.62</b></td><td>…</td><td>0.01</td></tr>
+    </table>
+    <p>"cat" puts 62% of its attention on "sat" — it found its verb.</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 10, 10)</span> — each row sums to 1</p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ × V</div>
+
+<!-- 8 ─ Weighted Values -->
+<div class="stage enc" id="s8">
+  <div class="stage-hdr c-enc" onclick="toggle('s8')">
+    <span class="arrow">▶</span>
+    <span class="title">⑧ Attention × Values → Per-Head Output</span>
+    <span class="io">(1, 8, 10, 10) × (1, 8, 10, 64) → (1, 8, 10, 64)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>The attention weights select and blend value vectors:</p>
+    <div class="eq">head_out = attn_weights @ V    # (1, 8, 10, 10) @ (1, 8, 10, 64) → (1, 8, 10, 64)</div>
+    <p>Each token's output in a head is a <b>weighted sum</b> of all value vectors, using the attention weights from the previous step.</p>
+    <p>Token "cat" in head 3 gets: 0.62 × V("sat") + 0.08 × V("cat") + 0.05 × V("The") + …</p>
+    <p><b>Output:</b> 8 heads × <span class="shape">(1, 10, 64)</span> = <span class="shape">(1, 8, 10, 64)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ concat heads</div>
+
+<!-- 9 ─ Concat + W_O -->
+<div class="stage enc" id="s9">
+  <div class="stage-hdr c-enc" onclick="toggle('s9')">
+    <span class="arrow">▶</span>
+    <span class="title">⑨ Concat Heads + W<sup>O</sup> Projection</span>
+    <span class="io">(1, 8, 10, 64) → (1, 10, 512) → (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p><b>Step 1: Concat.</b> The 8 head outputs are concatenated along the last dimension:</p>
+    <div class="eq">concat = head_out.transpose(1,2).reshape(1, 10, 512)   # (1, 10, 512)
+# dims 0-63 = head 0, dims 64-127 = head 1, …, dims 448-511 = head 7</div>
+    <p><b>Problem:</b> The 512 dimensions are <b>siloed by head</b>. Head 0's features occupy dims 0–63, head 1 has 64–127, etc. No cross-head information flow yet.</p>
+    <p><b>Step 2: W<sup>O</sup> projection.</b> The output matrix blends across heads:</p>
+    <div class="eq">attn_output = concat @ W_O     # (1, 10, 512) @ (512, 512) → (1, 10, 512)</div>
+    <div class="note">
+      <b>W<sup>O</sup> is the only cross-head communication matrix.</b> Without it, multi-head attention would be 8 independent attentions that never share information. W<sup>O</sup> lets the model combine "head 3 found the subject" with "head 5 found tense" into one coherent representation.
+    </div>
+    <p><b>Parameters:</b> W<sup>O</sup> = 512 × 512 = <b>262K</b></p>
+    <p><b>Total attention params per layer:</b> W<sup>Q</sup> + W<sup>K</sup> + W<sup>V</sup> + W<sup>O</sup> = 4 × 262K = <b>~1.05M</b></p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ + x (residual)</div>
+
+<!-- 10 ─ Add & Norm 1 -->
+<div class="stage enc" id="s10">
+  <div class="stage-hdr c-norm" onclick="toggle('s10')">
+    <span class="arrow">▶</span>
+    <span class="title">⑩ Residual + LayerNorm</span>
+    <span class="io">(1, 10, 512) → (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>The attention output is added back to the original input (residual connection), then normalized:</p>
+    <div class="eq">h = LayerNorm(x + attn_output)    # (1, 10, 512)</div>
+    <p><b>Residual:</b> The sub-layer only needs to learn the <i>delta</i> — what to add. The original signal x is preserved.</p>
+    <p><b>LayerNorm:</b> Normalizes across the 512-dim feature axis for each token independently. Mean → 0, variance → 1, then scale/shift with learned γ, β.</p>
+    <div class="note">
+      <b>Why LayerNorm, not BatchNorm?</b> Sequences have different lengths within a batch. BatchNorm normalizes across the batch — problematic with variable padding. LayerNorm normalizes each token's features independently.
+    </div>
+    <p><b>Parameters:</b> γ, β each 512 = <b>1K</b></p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span> — this is <b>h</b></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓</div>
+
+<!-- 11 ─ FFN -->
+<div class="stage enc" id="s11">
+  <div class="stage-hdr c-ffn" onclick="toggle('s11')">
+    <span class="arrow">▶</span>
+    <span class="title">⑪ Feed-Forward Network (position-wise)</span>
+    <span class="io">(1, 10, 512) → (1, 10, 2048) → (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>A two-layer MLP applied <b>independently to each token</b> (same weights, per position):</p>
+    <div class="eq">FFN(h) = max(0, h @ W₁ + b₁) @ W₂ + b₂
+
+Step 1:  h @ W₁ + b₁    # (1, 10, 512) @ (512, 2048)  → (1, 10, 2048)
+Step 2:  ReLU             # (1, 10, 2048)  — kills negative values
+Step 3:  × W₂ + b₂       # (1, 10, 2048) @ (2048, 512) → (1, 10, 512)</div>
+    <table>
+      <tr><th>Weight</th><th>Shape</th><th>Parameters</th></tr>
+      <tr><td>W₁</td><td>512 × 2048</td><td>1,048,576</td></tr>
+      <tr><td>b₁</td><td>2048</td><td>2,048</td></tr>
+      <tr><td>W₂</td><td>2048 × 512</td><td>1,048,576</td></tr>
+      <tr><td>b₂</td><td>512</td><td>512</td></tr>
+    </table>
+    <div class="note">
+      <b>Why expand 4×?</b> The 2048-dim inner layer is a "memory bank." The expansion gives more capacity to process patterns; ReLU selectively activates ~half the neurons per input. The compression back to 512 forces the network to distill what's useful.
+    </div>
+    <p><b>Parameters:</b> ~<b>2.1M</b> per FFN</p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ + h (residual)</div>
+
+<!-- 12 ─ Add & Norm 2 -->
+<div class="stage enc" id="s12">
+  <div class="stage-hdr c-norm" onclick="toggle('s12')">
+    <span class="arrow">▶</span>
+    <span class="title">⑫ Residual + LayerNorm</span>
+    <span class="io">(1, 10, 512) → (1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <div class="eq">output = LayerNorm(h + FFN(h))    # (1, 10, 512)</div>
+    <p>Same pattern as step ⑩. This output becomes the input to the next encoder layer.</p>
+    <p><b>One encoder layer total: ~3.15M params</b> (1.05M attention + 2.1M FFN + ~1K norms)</p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span> → feeds into layer 2, 3, …, 6</p>
+  </div></div>
+</div>
+
+</div><!-- /rail -->
+
+<div class="repeat">↻ Repeat steps ④–⑫ for layers 2, 3, 4, 5, 6 — each reads (1, 10, 512), outputs (1, 10, 512)</div>
+
+<div class="rail">
+<div class="conn-arrow" style="margin-top:8px">↓ encoder output</div>
+
+<!-- 13 ─ Encoder Final Output -->
+<div class="stage enc" id="s13">
+  <div class="stage-hdr c-embed" onclick="toggle('s13')">
+    <span class="arrow">▶</span>
+    <span class="title">⑬ Encoder Final Output</span>
+    <span class="io">(1, 10, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>After 6 layers, the encoder produces a rich, context-aware representation of every input token.</p>
+    <p>Token "cat" is no longer just "cat" — it encodes "cat as the subject of sat, which is modified by down, preceded by The, in a sentence that ends with a period."</p>
+    <p>This tensor is sent to <b>every decoder layer</b> as K and V for cross-attention. It is computed <b>once</b> and reused.</p>
+    <p><b>Total encoder params:</b> 6 × 3.15M + 18.9M (embedding) ≈ <b>37.8M</b></p>
+    <p><b>Output:</b> <span class="shape">(1, 10, 512)</span></p>
+  </div></div>
+</div>
+</div><!-- /rail -->
+
+<!-- ═══════════════════════════════════════════════════════
+     DECODER INPUT
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-label dec-lbl" style="margin-top:28px">Decoder Input</div>
+
+<div class="rail">
+
+<!-- 14 ─ Target Tokens -->
+<div class="stage dec" id="s14">
+  <div class="stage-hdr c-embed" onclick="toggle('s14')">
+    <span class="arrow">▶</span>
+    <span class="title">⑭ Target Token IDs (shifted right)</span>
+    <span class="io">(1, 8)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>During training: the correct target sequence, shifted right by 1 (so position 0 = &lt;BOS&gt;).</p>
+    <p>During inference: generated tokens so far + new token being predicted.</p>
+    <p><b>Output:</b> <span class="shape">(1, 8)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓</div>
+
+<!-- 15 ─ Target Embedding + PE -->
+<div class="stage dec" id="s15">
+  <div class="stage-hdr c-embed" onclick="toggle('s15')">
+    <span class="arrow">▶</span>
+    <span class="title">⑮ Target Embedding + Positional Encoding</span>
+    <span class="io">(1, 8) → (1, 8, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Same process as encoder: embedding lookup + sinusoidal PE addition.</p>
+    <div class="eq">y = Embedding(target_ids) + PE[:8]    # (1, 8, 512)</div>
+    <p>The embedding matrix is <b>shared with the encoder</b> (weight tying).</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 512)</span> — this is <b>y</b></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ dropout(0.1)</div>
+
+</div><!-- /rail -->
+
+<!-- ═══════════════════════════════════════════════════════
+     DECODER LAYER
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-label dec-lbl">Decoder Layer (× 6)</div>
+
+<div class="rail">
+
+<!-- 16 ─ Masked Self-Attention -->
+<div class="stage dec" id="s16">
+  <div class="stage-hdr c-dec" onclick="toggle('s16')">
+    <span class="arrow">▶</span>
+    <span class="title">⑯ Masked Multi-Head Self-Attention</span>
+    <span class="io">(1, 8, 512) → (1, 8, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Identical to encoder self-attention (steps ④–⑨), but with a <b>causal mask</b>.</p>
+    <div class="eq">Q = y @ W_Q    K = y @ W_K    V = y @ W_V     # all from y
+scores = Q @ K.T / √64                          # (1, 8, 8, 8)
+scores = scores.masked_fill(mask, -∞)            # upper triangle → -∞
+attn = softmax(scores) @ V                       # (1, 8, 8, 64)
+→ concat + W_O → (1, 8, 512)</div>
+    <p>The mask is a lower-triangular matrix: token i can only see tokens 0…i. After softmax, e<sup>-∞</sup> = 0.</p>
+    <table>
+      <tr><th></th><th>pos 0</th><th>pos 1</th><th>pos 2</th><th>…</th><th>pos 7</th></tr>
+      <tr><td><b>pos 0</b></td><td>✓</td><td>✗</td><td>✗</td><td>✗</td><td>✗</td></tr>
+      <tr><td><b>pos 1</b></td><td>✓</td><td>✓</td><td>✗</td><td>✗</td><td>✗</td></tr>
+      <tr><td><b>pos 2</b></td><td>✓</td><td>✓</td><td>✓</td><td>✗</td><td>✗</td></tr>
+      <tr><td><b>…</b></td><td>✓</td><td>✓</td><td>✓</td><td>…</td><td>✗</td></tr>
+      <tr><td><b>pos 7</b></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    </table>
+    <p><b>Attention score shape:</b> <span class="shape">(1, 8, 8, 8)</span> — 8 heads, each 8×8 (T<sub>tgt</sub> × T<sub>tgt</sub>)</p>
+    <p><b>Parameters:</b> ~1.05M (same as encoder attention)</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ + y (residual) → LayerNorm</div>
+
+<!-- 17 ─ Cross-Attention -->
+<div class="stage dec" id="s17">
+  <div class="stage-hdr c-cross" onclick="toggle('s17')">
+    <span class="arrow">▶</span>
+    <span class="title">⑰ Cross-Attention (Decoder → Encoder)</span>
+    <span class="io">Q: (1, 8, 512) | K,V: (1, 10, 512) → (1, 8, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>This is where the encoder and decoder <b>meet</b>. The decoder asks: "given what I've generated so far, what parts of the input should I attend to?"</p>
+    <div class="eq">Q = decoder_h @ W_Q     # (1, 8, 512) — from decoder's current state
+K = encoder_out @ W_K   # (1, 10, 512) — from encoder final output
+V = encoder_out @ W_V   # (1, 10, 512) — from encoder final output
+
+# Reshape to heads:
+Q → (1, 8, 8, 64)     # 8 heads, 8 target positions, 64 dims
+K → (1, 8, 10, 64)    # 8 heads, 10 source positions, 64 dims
+V → (1, 8, 10, 64)
+
+scores = Q @ K.T / √64  # (1, 8, 8, 64) @ (1, 8, 64, 10) → (1, 8, 8, 10)
+attn = softmax(scores) @ V   # (1, 8, 8, 10) @ (1, 8, 10, 64) → (1, 8, 8, 64)
+→ concat + W_O → (1, 8, 512)</div>
+    <div class="note">
+      <b>Key shape: (1, 8, 8, 10)</b> — for each of 8 heads, every decoder position (8) has a probability distribution over every encoder position (10). This is the "bridge" between input and output.
+    </div>
+    <p>No causal mask here — each decoder token can see <b>all</b> encoder positions.</p>
+    <p><b>Parameters:</b> ~1.05M (separate W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>, W<sup>O</sup> — not shared with self-attention)</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ + residual → LayerNorm</div>
+
+<!-- 18 ─ Decoder FFN -->
+<div class="stage dec" id="s18">
+  <div class="stage-hdr c-ffn" onclick="toggle('s18')">
+    <span class="arrow">▶</span>
+    <span class="title">⑱ Feed-Forward Network</span>
+    <span class="io">(1, 8, 512) → (1, 8, 2048) → (1, 8, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Same architecture as encoder FFN (step ⑪): 512 → 2048 → ReLU → 512.</p>
+    <p>Applied independently to each of the 8 target positions.</p>
+    <p><b>Parameters:</b> ~2.1M</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 512)</span></p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ + residual → LayerNorm</div>
+
+<!-- 19 ─ Decoder Layer Output -->
+<div class="stage dec" id="s19">
+  <div class="stage-hdr c-norm" onclick="toggle('s19')">
+    <span class="arrow">▶</span>
+    <span class="title">⑲ Decoder Layer Output</span>
+    <span class="io">(1, 8, 512)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>One decoder layer has <b>3 sub-layers</b>:</p>
+    <table>
+      <tr><th>Sub-layer</th><th>Params</th></tr>
+      <tr><td>Masked Self-Attention (W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>, W<sup>O</sup>)</td><td>~1.05M</td></tr>
+      <tr><td>Cross-Attention (W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup>, W<sup>O</sup>)</td><td>~1.05M</td></tr>
+      <tr><td>FFN (W₁, W₂)</td><td>~2.1M</td></tr>
+    </table>
+    <p><b>Total per decoder layer: ~4.2M</b> — 50% more than an encoder layer because of the extra cross-attention.</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 512)</span> → feeds into next decoder layer</p>
+  </div></div>
+</div>
+
+</div><!-- /rail -->
+
+<div class="repeat">↻ Repeat steps ⑯–⑲ for decoder layers 2, 3, 4, 5, 6</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     OUTPUT
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-label out-lbl" style="margin-top:28px">Output</div>
+
+<div class="rail">
+
+<div class="conn-arrow" style="margin-top:4px">↓ final decoder output</div>
+
+<!-- 20 ─ Linear to Vocab -->
+<div class="stage out" id="s20">
+  <div class="stage-hdr c-out" onclick="toggle('s20')">
+    <span class="arrow">▶</span>
+    <span class="title">⑳ Linear Projection to Vocabulary</span>
+    <span class="io">(1, 8, 512) → (1, 8, 37000)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>The final decoder output is projected to vocabulary size:</p>
+    <div class="eq">logits = decoder_out @ W_vocab    # (1, 8, 512) @ (512, 37000) → (1, 8, 37000)</div>
+    <p>Each of the 8 target positions gets a score for every word in the vocabulary.</p>
+    <div class="note">
+      <b>Weight tying:</b> W<sub>vocab</sub> is the <b>transpose of the embedding matrix</b> E<sup>T</sup>. The same 512-dim vectors that encode tokens as inputs also decode them as outputs. This saves 18.9M parameters and provides a useful inductive bias.
+    </div>
+    <p><b>Parameters:</b> 0 (shared with embedding)</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 37000)</span> — raw logits (unnormalized scores)</p>
+  </div></div>
+</div>
+<div class="conn-arrow">↓ softmax</div>
+
+<!-- 21 ─ Softmax to Probs -->
+<div class="stage out" id="s21">
+  <div class="stage-hdr c-out" onclick="toggle('s21')">
+    <span class="arrow">▶</span>
+    <span class="title">㉑ Softmax → Token Probabilities</span>
+    <span class="io">(1, 8, 37000) → (1, 8, 37000)</span>
+  </div>
+  <div class="detail"><div class="detail-inner">
+    <p>Each position's 37,000 scores become a probability distribution:</p>
+    <div class="eq">probs = softmax(logits, dim=-1)    # (1, 8, 37000)
+# each of the 8 positions sums to 1.0</div>
+    <p>During <b>training</b>: compare against true target via cross-entropy loss (all 8 positions in parallel).</p>
+    <p>During <b>inference</b>: use decoding strategy (greedy / beam search / top-p sampling) on position T to pick the next token.</p>
+    <p><b>Output:</b> <span class="shape">(1, 8, 37000)</span> — probability over vocabulary per position</p>
+  </div></div>
+</div>
+
+</div><!-- /rail -->
+
+<!-- ═══════════════════════════════════════════════════════
+     SUMMARY TABLE
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-label" style="margin-top: 32px;">Parameter Summary</div>
+<div style="margin-left: 38px; padding-left: 32px; font-size: 13px; margin-top: 8px;">
+<table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+  <tr style="background: #f6f8fa;"><th style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: left;">Component</th><th style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">Per Layer</th><th style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">× Layers</th><th style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">Total</th></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">Shared Embedding (E)</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">—</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">1</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;"><b>18.9M</b></td></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">Encoder Self-Attention</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">1.05M</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">× 6</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">6.3M</td></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">Encoder FFN</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">2.1M</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">× 6</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">12.6M</td></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">Decoder Masked Self-Attention</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">1.05M</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">× 6</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">6.3M</td></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">Decoder Cross-Attention</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">1.05M</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">× 6</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">6.3M</td></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">Decoder FFN</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">2.1M</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">× 6</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">12.6M</td></tr>
+  <tr><td style="border: 1px solid #d0d7de; padding: 6px 10px;">LayerNorms (all)</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">~1K each</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">—</td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">~0.03M</td></tr>
+  <tr style="background: #f6f8fa; font-weight: 700;"><td style="border: 1px solid #d0d7de; padding: 6px 10px;">TOTAL (base model)</td><td style="border: 1px solid #d0d7de; padding: 6px 10px;"></td><td style="border: 1px solid #d0d7de; padding: 6px 10px;"></td><td style="border: 1px solid #d0d7de; padding: 6px 10px; text-align: right;">~63M</td></tr>
+</table>
+</div>
+
+<p style="text-align: center; margin-top: 32px; color: #656d76; font-size: 12px;">
+  Talha Kılıç — SWE @ Microsoft &nbsp;·&nbsp; <a href="https://substack.com/@talhakilic" style="color: #0969da; text-decoration: none;">substack.com/@talhakilic</a>
+</p>
+
+</div><!-- /page -->
+
+<script>
+function toggle(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+function expandAll() {
+  document.querySelectorAll('.stage').forEach(s => s.classList.add('open'));
+}
+function collapseAll() {
+  document.querySelectorAll('.stage').forEach(s => s.classList.remove('open'));
+}
+</script>
+</body>
+</html>

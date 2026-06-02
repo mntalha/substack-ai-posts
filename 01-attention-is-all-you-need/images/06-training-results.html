@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Training Setup & Results</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; color: #1f2328; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+  .container { max-width: 900px; width: 100%; }
+  h1 { text-align: center; font-size: 24px; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin-bottom: 28px; }
+  .grid { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+  .card { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 18px; flex: 1; min-width: 260px; }
+  .card h3 { font-size: 14px; margin-bottom: 10px; }
+  .card table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .card th { background: #ffffff; border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; color: #656d76; }
+  .card td { border: 1px solid #d0d7de; padding: 6px 10px; }
+  .hl-blue { color: #0969da; }
+  .hl-green { color: #1a7f37; }
+  .hl-orange { color: #cf222e; }
+  .hl-yellow { color: #9a6700; }
+  .lr-visual { margin: 16px 0; }
+  .lr-visual canvas { display: block; width: 100%; border-radius: 6px; border: 1px solid #d0d7de; }
+  .results-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 16px; }
+  .results-table th { background: #f6f8fa; border: 1px solid #d0d7de; padding: 10px 14px; text-align: left; color: #656d76; font-weight: 600; }
+  .results-table td { border: 1px solid #d0d7de; padding: 10px 14px; }
+  .results-table .winner { background: #0d2818; }
+  .results-table .winner td { color: #1a7f37; font-weight: 700; }
+  .section { margin-bottom: 28px; }
+  .section h2 { font-size: 18px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #d0d7de; }
+  .formula { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 14px; font-family: 'Cascadia Code', monospace; font-size: 13px; text-align: center; margin: 12px 0; line-height: 1.8; }
+  .formula em { color: #0969da; font-style: normal; }
+  .note { font-size: 11px; color: #656d76; line-height: 1.5; margin-top: 8px; }
+  .insight { background: #f6f8fa; border-left: 3px solid #e3b341; border-radius: 0 8px 8px 0; padding: 16px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Training Setup & Results</h1>
+  <p class="sub">"Attention Is All You Need" — Vaswani et al., 2017</p>
+
+  <!-- HYPERPARAMS -->
+  <div class="section">
+    <h2 style="color:#0969da;">Hyperparameters</h2>
+    <div class="grid">
+      <div class="card">
+        <h3 style="color:#0969da;">Architecture</h3>
+        <table>
+          <tr><td>d_model</td><td class="hl-blue">512 (base) / 1024 (big)</td></tr>
+          <tr><td>N (layers)</td><td class="hl-blue">6</td></tr>
+          <tr><td>h (heads)</td><td class="hl-blue">8 (base) / 16 (big)</td></tr>
+          <tr><td>d_k = d_v</td><td class="hl-blue">64</td></tr>
+          <tr><td>d_ff</td><td class="hl-blue">2048 (base) / 4096 (big)</td></tr>
+          <tr><td>Vocabulary</td><td>~37,000 BPE tokens</td></tr>
+          <tr><td>Parameters</td><td class="hl-blue">65M (base) / 213M (big)</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3 style="color:#1a7f37;">Training</h3>
+        <table>
+          <tr><td>Optimizer</td><td class="hl-green">Adam</td></tr>
+          <tr><td>β₁, β₂</td><td>0.9, 0.98</td></tr>
+          <tr><td>ε</td><td>10⁻⁹</td></tr>
+          <tr><td>Warmup steps</td><td class="hl-green">4,000</td></tr>
+          <tr><td>Total steps</td><td>100K (base) / 300K (big)</td></tr>
+          <tr><td>Batch size</td><td>~25K source + 25K target tokens</td></tr>
+          <tr><td>Hardware</td><td>8 × NVIDIA P100</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3 style="color:#cf222e;">Regularization</h3>
+        <table>
+          <tr><td>Dropout</td><td class="hl-orange">0.1 (base) / 0.3 (big)</td></tr>
+          <tr><td>Applied to</td><td>Sub-layer outputs + embeddings + PE</td></tr>
+          <tr><td>Label smoothing</td><td class="hl-orange">ε_ls = 0.1</td></tr>
+          <tr><td>Effect</td><td>Hurts perplexity, improves BLEU</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARNING RATE -->
+  <div class="section">
+    <h2 style="color:#9a6700;">Learning Rate Schedule</h2>
+    <div class="formula">
+      <em>lr</em> = <em>d_model</em><sup>-0.5</sup> · min(<em>step</em><sup>-0.5</sup>, <em>step</em> · <em>warmup_steps</em><sup>-1.5</sup>)
+    </div>
+    <div class="lr-visual">
+      <canvas id="lr-chart" width="860" height="200"></canvas>
+    </div>
+    <div class="insight">
+      <strong style="color:#9a6700;">Why warmup?</strong> Adam's running averages (moments) start at zero. 
+      In early steps, gradient estimates are noisy and biased. A low learning rate during warmup 
+      lets the moments accumulate meaningful statistics before the model takes larger steps. 
+      After warmup, the learning rate decays as 1/√step — gradual cooling as the model converges.
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="section">
+    <h2 style="color:#1a7f37;">Results — Machine Translation</h2>
+    <table class="results-table">
+      <tr>
+        <th>Model</th>
+        <th>EN→DE BLEU</th>
+        <th>EN→FR BLEU</th>
+        <th>Training Time</th>
+      </tr>
+      <tr>
+        <td>GNMT + RL (Google, 2016)</td>
+        <td>24.6</td>
+        <td>39.92</td>
+        <td>Weeks</td>
+      </tr>
+      <tr>
+        <td>ConvS2S (Facebook, 2017)</td>
+        <td>25.16</td>
+        <td>40.46</td>
+        <td>Weeks</td>
+      </tr>
+      <tr>
+        <td>MoE (Shazeer et al., 2017)</td>
+        <td>26.03</td>
+        <td>40.56</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>GNMT + RL Ensemble</td>
+        <td>26.30</td>
+        <td>41.16</td>
+        <td>Weeks × models</td>
+      </tr>
+      <tr>
+        <td>ConvS2S Ensemble</td>
+        <td>26.36</td>
+        <td>41.29</td>
+        <td>Weeks × models</td>
+      </tr>
+      <tr>
+        <td style="color:#0969da;">Transformer (base)</td>
+        <td style="color:#0969da;">27.3</td>
+        <td>38.1</td>
+        <td style="color:#1a7f37;">12 hours</td>
+      </tr>
+      <tr class="winner">
+        <td>Transformer (big)</td>
+        <td>28.4 ✓</td>
+        <td>41.8 ✓</td>
+        <td>3.5 days</td>
+      </tr>
+    </table>
+    <p class="note" style="margin-top:12px;">
+      The base model beats all previous ensembles (multi-model combinations) while being a single model 
+      trained in 12 hours. The big model sets new SOTA by +2 BLEU on EN→DE — a massive improvement.
+    </p>
+  </div>
+
+  <!-- MODEL VARIATIONS -->
+  <div class="section">
+    <h2 style="color:#8250df;">Key Findings from Ablations (Table 3)</h2>
+    <div class="grid">
+      <div class="card">
+        <h3 style="color:#8250df;">Attention Heads</h3>
+        <table>
+          <tr><th>Heads</th><th>d_k</th><th>BLEU</th></tr>
+          <tr><td>1</td><td>512</td><td class="hl-orange">24.9</td></tr>
+          <tr><td>4</td><td>128</td><td>25.5</td></tr>
+          <tr><td class="hl-green">8</td><td class="hl-green">64</td><td class="hl-green">25.8</td></tr>
+          <tr><td>16</td><td>32</td><td>25.8</td></tr>
+          <tr><td>32</td><td>16</td><td class="hl-orange">25.4</td></tr>
+        </table>
+        <p class="note">Sweet spot at 8 heads. Single head is worst. Too many heads (too small d_k) also hurts.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#8250df;">Model Size</h3>
+        <table>
+          <tr><th>Layers</th><th>d_model</th><th>BLEU</th></tr>
+          <tr><td>2</td><td>512</td><td class="hl-orange">23.7</td></tr>
+          <tr><td>4</td><td>512</td><td>25.3</td></tr>
+          <tr><td class="hl-green">6</td><td class="hl-green">512</td><td class="hl-green">25.8</td></tr>
+          <tr><td>8</td><td>512</td><td>25.5</td></tr>
+          <tr><td>6</td><td>1024</td><td class="hl-green">26.0</td></tr>
+        </table>
+        <p class="note">Bigger is better — but 6 layers at 512 is the sweet spot for the base model. Scaling d_model helps more than adding layers.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#8250df;">Regularization</h3>
+        <table>
+          <tr><th>Dropout</th><th>Label Smooth</th><th>BLEU</th></tr>
+          <tr><td>0.0</td><td>0.1</td><td class="hl-orange">24.6</td></tr>
+          <tr><td class="hl-green">0.1</td><td class="hl-green">0.1</td><td class="hl-green">25.8</td></tr>
+          <tr><td>0.2</td><td>0.1</td><td>25.5</td></tr>
+          <tr><td>0.1</td><td>0.0</td><td>25.3</td></tr>
+          <tr><td>0.1</td><td>0.2</td><td>25.7</td></tr>
+        </table>
+        <p class="note">Both dropout and label smoothing matter. No dropout drops 1.2 BLEU. No label smoothing drops 0.5 BLEU.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Learning rate chart
+const canvas = document.getElementById('lr-chart');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const pad = { top: 20, right: 20, bottom: 30, left: 60 };
+const plotW = W - pad.left - pad.right;
+const plotH = H - pad.top - pad.bottom;
+
+const dModel = 512;
+const warmup = 4000;
+const maxStep = 50000;
+
+function lr(step) {
+  return Math.pow(dModel, -0.5) * Math.min(Math.pow(step, -0.5), step * Math.pow(warmup, -1.5));
+}
+
+// Find max lr for scaling
+const maxLr = lr(warmup);
+
+// Background
+ctx.fillStyle = '#f6f8fa';
+ctx.fillRect(0, 0, W, H);
+
+// Grid lines
+ctx.strokeStyle = '#d0d7de';
+ctx.lineWidth = 1;
+for (let i = 0; i <= 5; i++) {
+  const y = pad.top + (plotH / 5) * i;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, y);
+  ctx.lineTo(W - pad.right, y);
+  ctx.stroke();
+}
+
+// Draw curve
+ctx.beginPath();
+ctx.strokeStyle = '#e3b341';
+ctx.lineWidth = 2;
+let first = true;
+for (let step = 1; step <= maxStep; step += 50) {
+  const x = pad.left + (step / maxStep) * plotW;
+  const y = pad.top + plotH - (lr(step) / maxLr) * plotH * 0.9;
+  if (first) { ctx.moveTo(x, y); first = false; }
+  else ctx.lineTo(x, y);
+}
+ctx.stroke();
+
+// Warmup line
+const warmupX = pad.left + (warmup / maxStep) * plotW;
+ctx.strokeStyle = '#f7816640';
+ctx.lineWidth = 1;
+ctx.setLineDash([4, 4]);
+ctx.beginPath();
+ctx.moveTo(warmupX, pad.top);
+ctx.lineTo(warmupX, pad.top + plotH);
+ctx.stroke();
+ctx.setLineDash([]);
+
+// Labels
+ctx.fillStyle = '#656d76';
+ctx.font = '11px monospace';
+ctx.textAlign = 'center';
+ctx.fillText('0', pad.left, pad.top + plotH + 16);
+ctx.fillText('4K', warmupX, pad.top + plotH + 16);
+ctx.fillText('10K', pad.left + (10000/maxStep)*plotW, pad.top + plotH + 16);
+ctx.fillText('25K', pad.left + (25000/maxStep)*plotW, pad.top + plotH + 16);
+ctx.fillText('50K', pad.left + (50000/maxStep)*plotW, pad.top + plotH + 16);
+ctx.fillText('Training Steps', W/2, H - 2);
+
+// Warmup annotation
+ctx.fillStyle = '#cf222e';
+ctx.font = '10px sans-serif';
+ctx.fillText('warmup', warmupX, pad.top - 6);
+ctx.fillText('= 4000', warmupX, pad.top + 4);
+
+// Peak annotation
+ctx.fillStyle = '#9a6700';
+ctx.font = '10px monospace';
+ctx.textAlign = 'left';
+ctx.fillText('peak lr ≈ 7.1×10⁻⁴', warmupX + 8, pad.top + 20);
+
+// Y axis
+ctx.save();
+ctx.translate(14, pad.top + plotH/2);
+ctx.rotate(-Math.PI/2);
+ctx.fillStyle = '#656d76';
+ctx.font = '11px sans-serif';
+ctx.textAlign = 'center';
+ctx.fillText('Learning Rate', 0, 0);
+ctx.restore();
+</script>
+</body>
+</html>
