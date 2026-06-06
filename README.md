@@ -7,6 +7,7 @@ Code, visualizations, and full articles behind my [Substack](https://substack.co
 | # | Topic | Paper | Status |
 |---|-------|-------|--------|
 | 01 | [Attention Is All You Need](01-attention-is-all-you-need/) | Vaswani et al., 2017 | ✅ Published |
+| 02 | [Transformer Q&A Deep Dive](02-transformer-qa-deep-dive/) | — | 📝 Draft |
 
 ## Repository Structure
 
